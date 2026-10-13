@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'app/app_lock.dart';
 import 'app/providers.dart';
 import 'app/shell.dart';
 import 'core/db/database.dart';
@@ -63,6 +64,10 @@ Future<void> main() async {
   final db = await AppDatabase.open(paths.database);
   final repo = Repository(db, epgDir: paths.epgDir);
   final settings = await repo.loadSettings();
+  final pinSet = await PinStore().isSet().catchError((Object e) {
+    AppLog.error('AppLock', e);
+    return false;
+  });
   unawaited(repo.cleanupEpgFiles());
 
   runApp(ProviderScope(
@@ -70,6 +75,7 @@ Future<void> main() async {
       appPathsProvider.overrideWithValue(paths),
       databaseProvider.overrideWithValue(db),
       initialSettingsProvider.overrideWithValue(settings),
+      initialPinSetProvider.overrideWithValue(pinSet),
     ],
     // Errors are surfaced in the UI; don't silently retry providers.
     retry: (_, _) => null,
@@ -86,6 +92,6 @@ class IptvApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: buildTheme(),
         home: const AppShell(),
-        builder: (_, child) => MiniModeHost(child: child!),
+        builder: (_, child) => AppLockGate(child: MiniModeHost(child: child!)),
       );
 }

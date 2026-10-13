@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/app_lock.dart';
 import '../../app/providers.dart';
 import '../../core/image_cache.dart';
 import '../../core/settings.dart';
@@ -34,9 +35,32 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   void _set(AppSettings Function(AppSettings) f) => ref.read(settingsProvider.notifier).update(f);
 
+  Future<void> _toggleLock(bool on) async {
+    final lock = ref.read(appLockProvider.notifier);
+    if (on) {
+      final pin = await showSetPinDialog(context);
+      if (pin == null) return;
+      await lock.enable(pin);
+      if (mounted) showInfo(context, 'App lock enabled');
+    } else {
+      if (!await showVerifyPinDialog(context)) return;
+      await lock.disable();
+      if (mounted) showInfo(context, 'App lock disabled');
+    }
+  }
+
+  Future<void> _changePin() async {
+    if (!await showVerifyPinDialog(context) || !mounted) return;
+    final pin = await showSetPinDialog(context, title: 'New PIN');
+    if (pin == null) return;
+    await ref.read(appLockProvider.notifier).enable(pin);
+    if (mounted) showInfo(context, 'PIN changed');
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(settingsProvider);
+    final lock = ref.watch(appLockProvider);
     final t = Theme.of(context).textTheme;
     return ListView(
       padding: const EdgeInsets.all(24),
@@ -131,6 +155,28 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             value: s.autoplayLastChannel,
             onChanged: (v) => _set((x) => x.copyWith(autoplayLastChannel: v)),
           ),
+        ]),
+        _Section(title: 'Security', children: [
+          SwitchListTile(
+            title: const Text('Lock app with PIN'),
+            subtitle: const Text('Ask for a PIN every time the app starts'),
+            value: lock.enabled,
+            onChanged: _toggleLock,
+          ),
+          if (lock.enabled) ...[
+            ListTile(
+              title: const Text('Change PIN'),
+              trailing: OutlinedButton(onPressed: _changePin, child: const Text('Change')),
+            ),
+            ListTile(
+              title: const Text('Lock now'),
+              subtitle: const Text('Pauses playback and shows the PIN screen'),
+              trailing: OutlinedButton(
+                onPressed: () => ref.read(appLockProvider.notifier).lockNow(),
+                child: const Text('Lock'),
+              ),
+            ),
+          ],
         ]),
         _Section(title: 'Storage', children: [
           ListTile(

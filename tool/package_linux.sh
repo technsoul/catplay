@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the Linux release and packages it as a .tar.gz and a .deb in dist/.
+# Builds the Linux release and packages it as a .deb in dist/.
 #
 #   tool/package_linux.sh
 #
@@ -20,13 +20,6 @@ mkdir -p dist
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 
-# --- tar.gz: portable folder, run ./catplay ---------------------------------
-PORT=$STAGE/$NAME-v$VERSION-linux-$ARCH
-cp -r "$BUNDLE" "$PORT"
-mv "$PORT/iptv_player" "$PORT/$NAME"
-cp assets/brand/mark.png "$PORT/$NAME.png"
-tar -C "$STAGE" -czf "dist/$NAME-v$VERSION-linux-$ARCH.tar.gz" "$(basename "$PORT")"
-
 # libmpv is not bundled on Linux; depend on whichever soname we linked against.
 MPV_SO=$(ldd "$BUNDLE"/lib/*.so | grep -o 'libmpv\.so\.[0-9]*' | sort -u | head -1)
 MPV_PKG=libmpv${MPV_SO##*.so.}
@@ -35,7 +28,8 @@ MPV_PKG=libmpv${MPV_SO##*.so.}
 DEB=$STAGE/deb
 mkdir -p "$DEB/opt" "$DEB/usr/bin" "$DEB/usr/share/applications" \
   "$DEB/usr/share/icons/hicolor/512x512/apps" "$DEB/DEBIAN"
-cp -r "$PORT" "$DEB/opt/$NAME"
+cp -r "$BUNDLE" "$DEB/opt/$NAME"
+mv "$DEB/opt/$NAME/iptv_player" "$DEB/opt/$NAME/$NAME"
 ln -s "/opt/$NAME/$NAME" "$DEB/usr/bin/$NAME"
 cp assets/brand/mark.png "$DEB/usr/share/icons/hicolor/512x512/apps/$NAME.png"
 cat > "$DEB/usr/share/applications/$NAME.desktop" <<EOF
@@ -62,4 +56,4 @@ Description: CAT - fast desktop IPTV player
 EOF
 dpkg-deb --root-owner-group --build "$DEB" "dist/${NAME}_${VERSION}_${DEB_ARCH}.deb" >/dev/null
 
-ls -lh dist/$NAME-v$VERSION-linux-$ARCH.tar.gz "dist/${NAME}_${VERSION}_${DEB_ARCH}.deb"
+ls -lh "dist/${NAME}_${VERSION}_${DEB_ARCH}.deb"

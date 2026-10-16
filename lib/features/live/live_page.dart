@@ -30,6 +30,7 @@ class _LivePageState extends ConsumerState<LivePage> {
   Timer? _epgTimer;
   StreamSubscription? _changes;
   final _scroll = ScrollController();
+  String _text = '';
   late final AppPlayer _player;
 
   Repository get _repo => ref.read(repositoryProvider);
@@ -39,6 +40,7 @@ class _LivePageState extends ConsumerState<LivePage> {
         sourceId: widget.source.id,
         categoryId: _cat.categoryId,
         favoritesOnly: _cat.favorites,
+        text: _text,
       );
 
   @override
@@ -152,7 +154,22 @@ class _LivePageState extends ConsumerState<LivePage> {
             },
           ),
         ),
-        SizedBox(width: 420, child: _channelList(playing)),
+        SizedBox(
+          width: 420,
+          child: Column(children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+              child: GlassSearchField(
+                hint: 'Search channels',
+                onChanged: (v) {
+                  setState(() => _text = v);
+                  _rebuildItems();
+                },
+              ),
+            ),
+            Expanded(child: _channelList(playing)),
+          ]),
+        ),
         Expanded(child: _previewPane()),
       ],
     );
@@ -162,6 +179,9 @@ class _LivePageState extends ConsumerState<LivePage> {
     final items = _items!;
     final total = items.total;
     if (total == null) return const Center(child: CircularProgressIndicator());
+    if (total == 0 && _text.isNotEmpty) {
+      return EmptyState(icon: Icons.search_off, title: 'No channels match "$_text"');
+    }
     if (total == 0) {
       return EmptyState(
         icon: _cat.favorites ? Icons.star_border : Icons.live_tv,
@@ -210,9 +230,9 @@ class _LivePageState extends ConsumerState<LivePage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 24, 16),
+          padding: const EdgeInsets.fromLTRB(12, 4, 24, 16),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppRadii.panel),
             child: AspectRatio(
               aspectRatio: 16 / 9,
               child: PlayerView(compact: true, onExpand: _openFull),
@@ -238,7 +258,7 @@ class _LivePageState extends ConsumerState<LivePage> {
                 IconButton(
                   tooltip: sel.isFavorite ? 'Remove from favorites' : 'Add to favorites',
                   icon: Icon(sel.isFavorite ? Icons.star : Icons.star_border,
-                      color: sel.isFavorite ? AppColors.accent : null),
+                      color: sel.isFavorite ? AppColors.star : null),
                   onPressed: () => _toggleFav(sel),
                 ),
                 const SizedBox(width: 6),
@@ -313,13 +333,9 @@ class ChannelTile extends StatelessWidget {
     final current = programmes?.where((p) => p.isLiveAt(now)).firstOrNull;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: Material(
-      color: selected ? AppColors.raised : const Color(0xFF2E2F38),
-      elevation: selected ? 10 : 0,
-      shadowColor: Colors.black,
-      borderRadius: BorderRadius.circular(16),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
+      child: GlassTile(
+        selected: selected,
+        radius: 16,
         onTap: onTap,
         onDoubleTap: onDoubleTap,
         onSecondaryTapUp: (d) => _menu(context, d.globalPosition),
@@ -343,7 +359,7 @@ class ChannelTile extends StatelessWidget {
                   children: [
                     Row(children: [
                       if (playing) ...[
-                        const Icon(Icons.graphic_eq, size: 14, color: AppColors.accent),
+                        const Icon(Icons.graphic_eq, size: 14, color: AppColors.accentBright),
                         const SizedBox(width: 4),
                       ],
                       Expanded(
@@ -353,7 +369,7 @@ class ChannelTile extends StatelessWidget {
                             style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
-                                color: playing ? AppColors.accent : null)),
+                                color: playing ? AppColors.accentBright : null)),
                       ),
                     ]),
                     if (current != null) ...[
@@ -377,7 +393,7 @@ class ChannelTile extends StatelessWidget {
               if (item.isFavorite)
                 const Padding(
                   padding: EdgeInsets.only(left: 6),
-                  child: Icon(Icons.star, size: 18, color: AppColors.accent),
+                  child: Icon(Icons.star, size: 18, color: AppColors.star),
                 ),
               if (item.catchupDays != null && item.catchupDays! > 0)
                 const Padding(
@@ -390,7 +406,6 @@ class ChannelTile extends StatelessWidget {
             ],
           ),
         ),
-      ),
       ),
     );
   }

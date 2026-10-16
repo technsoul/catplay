@@ -28,6 +28,7 @@ class _VodPageState extends ConsumerState<VodPage> {
   PagedItems? _items;
   StreamSubscription? _changes;
   final _scroll = ScrollController();
+  String _text = '';
 
   Repository get _repo => ref.read(repositoryProvider);
 
@@ -37,6 +38,7 @@ class _VodPageState extends ConsumerState<VodPage> {
         categoryId: _cat.categoryId,
         favoritesOnly: _cat.favorites,
         sort: _sort,
+        text: _text,
       );
 
   @override
@@ -87,12 +89,10 @@ class _VodPageState extends ConsumerState<VodPage> {
             },
           ),
         ),
-        const VerticalDivider(width: 1),
         Expanded(
           child: Column(
             children: [
               _toolbar(),
-              const Divider(height: 1),
               Expanded(child: _grid()),
             ],
           ),
@@ -102,29 +102,46 @@ class _VodPageState extends ConsumerState<VodPage> {
   }
 
   Widget _toolbar() => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.fromLTRB(16, 4, 24, 4),
         child: Row(
           children: [
-            Text(
-              _items?.total == null ? '' : '${formatCount(_items!.total!)} titles',
-              style: const TextStyle(color: AppColors.textDim),
+            Expanded(
+              child: PageHeader(
+                eyebrow: _items?.total == null ? ' ' : '${formatCount(_items!.total!)} titles',
+                title: widget.kind == ItemKind.movie ? 'Movies' : 'Series',
+              ),
             ),
-            const Spacer(),
-            const Text('Sort by ', style: TextStyle(color: AppColors.textDim)),
-            DropdownButton<ItemSort>(
-              value: _sort,
-              underline: const SizedBox.shrink(),
-              items: const [
-                DropdownMenuItem(value: ItemSort.playlist, child: Text('Default')),
-                DropdownMenuItem(value: ItemSort.added, child: Text('Recently added')),
-                DropdownMenuItem(value: ItemSort.name, child: Text('Name')),
-                DropdownMenuItem(value: ItemSort.rating, child: Text('Rating')),
-              ],
-              onChanged: (v) {
-                if (v == null) return;
-                setState(() => _sort = v);
-                _rebuild();
-              },
+            SizedBox(
+              width: 300,
+              child: GlassSearchField(
+                key: ValueKey(widget.kind),
+                hint: widget.kind == ItemKind.movie ? 'Search movies' : 'Search series',
+                onChanged: (v) {
+                  setState(() => _text = v);
+                  _rebuild();
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            GlassPill(
+              leading: Icons.sort_rounded,
+              child: DropdownButton<ItemSort>(
+                value: _sort,
+                borderRadius: BorderRadius.circular(AppRadii.tile),
+                icon: const Icon(Icons.expand_more_rounded, color: AppColors.textDim),
+                style: const TextStyle(color: AppColors.text, fontSize: 14, fontWeight: FontWeight.w600),
+                items: const [
+                  DropdownMenuItem(value: ItemSort.playlist, child: Text('Default')),
+                  DropdownMenuItem(value: ItemSort.added, child: Text('Recently added')),
+                  DropdownMenuItem(value: ItemSort.name, child: Text('Name')),
+                  DropdownMenuItem(value: ItemSort.rating, child: Text('Rating')),
+                ],
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() => _sort = v);
+                  _rebuild();
+                },
+              ),
             ),
           ],
         ),
@@ -134,6 +151,9 @@ class _VodPageState extends ConsumerState<VodPage> {
     final items = _items!;
     final total = items.total;
     if (total == null) return const Center(child: CircularProgressIndicator());
+    if (total == 0 && _text.isNotEmpty) {
+      return EmptyState(icon: Icons.search_off, title: 'Nothing matches "$_text"');
+    }
     if (total == 0) {
       return EmptyState(
         icon: widget.kind == ItemKind.movie ? Icons.movie_outlined : Icons.video_library_outlined,
@@ -158,7 +178,7 @@ class _VodPageState extends ConsumerState<VodPage> {
             return Container(
               decoration: BoxDecoration(
                 color: AppColors.surfaceHigh,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(AppRadii.tile),
               ),
             );
           }
@@ -195,8 +215,9 @@ class _PosterCardState extends State<PosterCard> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedScale(
-          scale: _hover ? 1.03 : 1,
-          duration: const Duration(milliseconds: 120),
+          scale: _hover ? 1.04 : 1,
+          duration: AppMotion.fast,
+          curve: AppMotion.curve,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -209,7 +230,7 @@ class _PosterCardState extends State<PosterCard> {
                         name: item.name,
                         width: c.maxWidth,
                         height: c.maxHeight,
-                        radius: 8,
+                        radius: AppRadii.tile,
                         fit: BoxFit.cover,
                       ),
                       if (item.rating != null && item.rating! > 0)
@@ -219,11 +240,11 @@ class _PosterCardState extends State<PosterCard> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.black87,
-                              borderRadius: BorderRadius.circular(4),
+                              color: const Color(0xCC080C16),
+                              borderRadius: BorderRadius.circular(6),
                             ),
                             child: Row(mainAxisSize: MainAxisSize.min, children: [
-                              const Icon(Icons.star, size: 11, color: AppColors.warning),
+                              const Icon(Icons.star, size: 11, color: AppColors.star),
                               const SizedBox(width: 2),
                               Text(item.rating!.toStringAsFixed(1),
                                   style: const TextStyle(fontSize: 11)),
@@ -234,8 +255,29 @@ class _PosterCardState extends State<PosterCard> {
                         const Positioned(
                           top: 6,
                           right: 6,
-                          child: Icon(Icons.star, size: 18, color: AppColors.warning),
+                          child: Icon(Icons.star, size: 18, color: AppColors.star),
                         ),
+                      // Glass rim and lift on hover, like the launcher cards.
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: AnimatedContainer(
+                            duration: AppMotion.fast,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(AppRadii.tile),
+                              border: Border.all(
+                                  color: _hover ? AppColors.glassBorderStrong : AppColors.glassBorder),
+                              boxShadow: _hover
+                                  ? const [
+                                      BoxShadow(
+                                          color: Color(0x80000000),
+                                          blurRadius: 40,
+                                          offset: Offset(0, 18)),
+                                    ]
+                                  : null,
+                            ),
+                          ),
+                        ),
+                      ),
                       if (widget.progress != null)
                         Positioned(
                           left: 0,

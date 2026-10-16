@@ -94,17 +94,14 @@ class _CategoryListState extends ConsumerState<CategoryList> {
     final visible = cats == null
         ? const <Category>[]
         : (f.isEmpty ? cats : cats.where((c) => c.name.toLowerCase().contains(f)).toList());
-    return Material(
-      color: AppColors.surface,
+    return GlassPanel(
+      margin: const EdgeInsets.fromLTRB(12, 4, 8, 16),
       child: Column(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
-            child: TextField(
-              decoration: const InputDecoration(
-                hintText: 'Filter categories',
-                prefixIcon: Icon(Icons.filter_list, size: 18),
-              ),
+            child: GlassSearchField(
+              hint: 'Filter categories',
               onChanged: (v) => setState(() => _filter = v),
             ),
           ),

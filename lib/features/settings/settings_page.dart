@@ -16,6 +16,7 @@ class SettingsPage extends ConsumerStatefulWidget {
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
+  int _tab = 0;
   int? _cacheBytes;
   late final _ua = TextEditingController(text: ref.read(settingsProvider).userAgent);
 
@@ -61,13 +62,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Widget build(BuildContext context) {
     final s = ref.watch(settingsProvider);
     final lock = ref.watch(appLockProvider);
-    final t = Theme.of(context).textTheme;
-    return ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        Text('Settings', style: t.headlineSmall),
-        const SizedBox(height: 20),
-        _Section(title: 'Playback', children: [
+    final sections = [
+      _Section(
+        title: 'Playback',
+        icon: Icons.play_circle_outline_rounded,
+        about: 'Decoding, buffering and stream format',
+        children: [
           SwitchListTile(
             title: const Text('Hardware decoding'),
             subtitle: const Text('Uses the GPU (D3D11/DXVA2). Turn off if you see green or frozen video. Takes effect after restart.'),
@@ -109,7 +109,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
         ]),
-        _Section(title: 'TV guide', children: [
+      _Section(
+        title: 'TV guide',
+        icon: Icons.calendar_view_week_rounded,
+        about: 'How much programme data to keep and when to refresh it',
+        children: [
           _SliderTile(
             title: 'Keep past programmes',
             value: s.epgPastHours.toDouble(),
@@ -139,7 +143,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             onChanged: (v) => _set((x) => x.copyWith(epgRefreshHours: v.round())),
           ),
         ]),
-        _Section(title: 'Playlists', children: [
+      _Section(
+        title: 'Playlists',
+        icon: Icons.playlist_play_rounded,
+        about: 'Automatic refresh and start-up behaviour',
+        children: [
           _SliderTile(
             title: 'Refresh playlists every',
             value: s.autoRefreshHours.toDouble(),
@@ -156,7 +164,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             onChanged: (v) => _set((x) => x.copyWith(autoplayLastChannel: v)),
           ),
         ]),
-        _Section(title: 'Security', children: [
+      _Section(
+        title: 'Security',
+        icon: Icons.lock_outline_rounded,
+        about: 'Protect the app with a PIN',
+        children: [
           SwitchListTile(
             title: const Text('Lock app with PIN'),
             subtitle: const Text('Ask for a PIN every time the app starts'),
@@ -178,7 +190,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ],
         ]),
-        _Section(title: 'Storage', children: [
+      _Section(
+        title: 'Storage',
+        icon: Icons.storage_rounded,
+        about: 'Cached images and watch history',
+        children: [
           ListTile(
             title: const Text('Image cache'),
             subtitle: Text(_cacheBytes == null
@@ -205,7 +221,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
         ]),
-        _Section(title: 'Keyboard shortcuts', children: const [
+      _Section(
+        title: 'Keyboard shortcuts',
+        icon: Icons.keyboard_alt_outlined,
+        about: 'Control playback from the keyboard or a remote',
+        children: const [
           _Shortcut('Space / K', 'Play / pause'),
           _Shortcut('F / F11 / double-click', 'Full screen'),
           _Shortcut('Esc', 'Exit full screen / close player'),
@@ -215,28 +235,94 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           _Shortcut('M', 'Mute'),
           _Shortcut('Ctrl + F', 'Search'),
         ]),
-        const SizedBox(height: 12),
-        const Center(
-          child: Text('CAT 1.0.0 · Playback by libmpv (media_kit)',
-              style: TextStyle(color: AppColors.textDim, fontSize: 12)),
+      const _Section(
+        title: 'About',
+        icon: Icons.info_outline_rounded,
+        about: 'Version and credits',
+        children: [
+          ListTile(
+            leading: Image(image: AssetImage('assets/brand/mark.png'), width: 36, height: 36),
+            title: Text('CAT 1.0.0'),
+            subtitle: Text('Playback by libmpv (media_kit)'),
+          ),
+        ],
+      ),
+    ];
+    final sec = sections[_tab.clamp(0, sections.length - 1)];
+    return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      SizedBox(
+        width: 260,
+        child: GlassPanel(
+          margin: const EdgeInsets.fromLTRB(12, 4, 8, 16),
+          child: ListView(
+            padding: const EdgeInsets.all(10),
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(10, 8, 10, 14),
+                child: Text('Settings',
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.4)),
+              ),
+              for (final (i, x) in sections.indexed)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: GlassTile(
+                    selected: i == _tab,
+                    onTap: () => setState(() => _tab = i),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    child: Row(children: [
+                      Icon(x.icon,
+                          size: 20, color: i == _tab ? AppColors.accentBright : AppColors.textDim),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(x.title,
+                            style: TextStyle(
+                                fontWeight: i == _tab ? FontWeight.w600 : FontWeight.w400,
+                                color: i == _tab ? AppColors.text : AppColors.textSoft)),
+                      ),
+                    ]),
+                  ),
+                ),
+            ],
+          ),
         ),
-      ],
-    );
+      ),
+      Expanded(
+        child: AnimatedSwitcher(
+          duration: AppMotion.base,
+          child: ListView(
+            key: ValueKey(_tab),
+            padding: const EdgeInsets.fromLTRB(16, 4, 24, 24),
+            children: [
+              PageHeader(eyebrow: sec.about, title: sec.title),
+              const SizedBox(height: 20),
+              sec.enter(1),
+            ],
+          ),
+        ),
+      ),
+    ]);
   }
 }
 
+/// One settings page: its rows in a glass card, separated by hairlines.
 class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.children});
+  const _Section({required this.title, required this.icon, required this.about, required this.children});
   final String title;
+  final IconData icon;
+  final String about;
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 20),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SectionTitle(title),
-          Card(child: Column(children: children)),
-        ]),
+  Widget build(BuildContext context) => Card(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(children: [
+            for (final (i, c) in children.indexed) ...[
+              if (i > 0) const Divider(indent: 16, endIndent: 16),
+              c,
+            ],
+          ]),
+        ),
       );
 }
 

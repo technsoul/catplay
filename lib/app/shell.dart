@@ -1,10 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/models.dart';
+import '../downloads/downloads.dart';
+import '../features/downloads/downloads_page.dart';
 import '../features/guide/guide_page.dart';
 import '../features/home/home_page.dart';
 import '../features/live/live_page.dart';
@@ -18,7 +21,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'providers.dart';
 
-enum Section { home, live, guide, movies, series, search, playlists, settings }
+enum Section { home, live, guide, movies, series, search, playlists, settings, downloads }
 
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
@@ -40,6 +43,8 @@ class _AppShellState extends ConsumerState<AppShell> {
       if (mounted) ref.read(importProvider.notifier).refreshStale();
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _autoplay());
+    // Resume downloads interrupted by the last exit.
+    ref.read(downloadsProvider);
   }
 
   @override
@@ -90,28 +95,48 @@ class _AppShellState extends ConsumerState<AppShell> {
         const SingleActivator(LogicalKeyboardKey.keyF, control: true): () => _go(Section.search),
       },
       child: Scaffold(
-        body: Row(
-          children: [
-            _Rail(section: _section, onSelect: _go),
-            Expanded(
-              child: Column(
-                children: [
-                  _TopBar(source: source, sources: sources, onPlaylists: () => _go(Section.playlists)),
-                  Expanded(
-                    child: needsSource
-                        ? const SizedBox.shrink()
-                        : IndexedStack(
-                            index: _section.index,
-                            children: [
-                              for (final s in Section.values)
-                                _visited.contains(s) ? _page(s, source) : const SizedBox.shrink(),
-                            ],
-                          ),
+        body: AppBackdrop(
+          hero: _section == Section.home,
+          child: Row(
+            children: [
+              // Home is a full-screen launcher; the rail slides in elsewhere.
+              ClipRect(
+                child: AnimatedAlign(
+                  alignment: Alignment.centerRight,
+                  widthFactor: _section == Section.home ? 0 : 1,
+                  duration: AppMotion.base,
+                  curve: AppMotion.curve,
+                  child: ExcludeFocus(
+                    excluding: _section == Section.home,
+                    child: _Rail(section: _section, onSelect: _go),
                   ),
-                ],
+                ),
               ),
-            ),
-          ],
+              Expanded(
+                child: Column(
+                  children: [
+                    _TopBar(
+                      source: source,
+                      sources: sources,
+                      // Home shows its own big clock.
+                      showClock: _section != Section.home,
+                    ),
+                    Expanded(
+                      child: needsSource
+                          ? const SizedBox.shrink()
+                          : IndexedStack(
+                              index: _section.index,
+                              children: [
+                                for (final s in Section.values)
+                                  _visited.contains(s) ? _page(s, source) : const SizedBox.shrink(),
+                              ],
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -126,6 +151,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         Section.search => SearchPage(focusNode: _searchFocus),
         Section.playlists => const SourcesPage(),
         Section.settings => const SettingsPage(),
+        Section.downloads => const DownloadsPage(),
       };
 }
 
@@ -141,12 +167,14 @@ class _Rail extends ConsumerWidget {
     (Section.movies, Icons.movie_outlined, Icons.movie, 'Movies'),
     (Section.series, Icons.video_library_outlined, Icons.video_library, 'Series'),
     (Section.search, Icons.search, Icons.search, 'Search'),
+    (Section.downloads, Icons.download_outlined, Icons.download, 'Downloads'),
     (Section.playlists, Icons.playlist_play_outlined, Icons.playlist_play, 'Playlists'),
   ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final importing = ref.watch(importProvider).values.any((s) => s.running);
+    final downloading = ref.watch(downloadsProvider.select((l) => l.where((t) => t.isActive).length));
     return SizedBox(
       width: 88,
       child: Column(children: [
@@ -157,14 +185,14 @@ class _Rail extends ConsumerWidget {
           child: SingleChildScrollView(
             child: Column(children: [
               for (final (s, icon, selectedIcon, label) in _items)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 5),
-                  child: RoundIconButton(
-                    icon: section == s ? selectedIcon : icon,
-                    tooltip: label,
-                    selected: section == s,
-                    onPressed: () => onSelect(s),
-                  ),
+                _RailItem(
+                  icon: section == s ? selectedIcon : icon,
+                  label: s == Section.downloads && downloading > 0
+                      ? 'Downloads ($downloading in progress)'
+                      : label,
+                  selected: section == s,
+                  badge: s == Section.downloads && downloading > 0,
+                  onPressed: () => onSelect(s),
                 ),
             ]),
           ),
@@ -179,9 +207,9 @@ class _Rail extends ConsumerWidget {
           ),
         Padding(
           padding: const EdgeInsets.only(bottom: 18),
-          child: RoundIconButton(
+          child: _RailItem(
             icon: section == Section.settings ? Icons.settings : Icons.settings_outlined,
-            tooltip: 'Settings',
+            label: 'Settings',
             selected: section == Section.settings,
             onPressed: () => onSelect(Section.settings),
           ),
@@ -191,11 +219,70 @@ class _Rail extends ConsumerWidget {
   }
 }
 
+/// A rail button with an amber marker on the rail's left edge when selected.
+class _RailItem extends StatelessWidget {
+  const _RailItem({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+    this.badge = false,
+  });
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onPressed;
+  final bool badge;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 88,
+        height: 58,
+        child: Stack(alignment: Alignment.center, children: [
+          Positioned(
+            left: 0,
+            child: AnimatedContainer(
+              duration: AppMotion.base,
+              curve: AppMotion.curve,
+              width: 4,
+              height: selected ? 24 : 0,
+              decoration: BoxDecoration(
+                color: AppColors.accent,
+                borderRadius: const BorderRadius.horizontal(right: Radius.circular(3)),
+                boxShadow: selected
+                    ? [BoxShadow(color: AppColors.accent.withValues(alpha: 0.5), blurRadius: 10)]
+                    : null,
+              ),
+            ),
+          ),
+          RoundIconButton(icon: icon, tooltip: label, selected: selected, onPressed: onPressed),
+          if (badge)
+            const Positioned(
+              top: 10,
+              right: 22,
+              child: IgnorePointer(
+                child: SizedBox(
+                  width: 9,
+                  height: 9,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(color: AppColors.accentBright, shape: BoxShape.circle),
+                  ),
+                ),
+              ),
+            ),
+        ]),
+      );
+}
+
 class _TopBar extends ConsumerWidget {
-  const _TopBar({required this.source, required this.sources, required this.onPlaylists});
+  const _TopBar({
+    required this.source,
+    required this.sources,
+    required this.showClock,
+  });
   final Source? source;
   final List<Source> sources;
-  final VoidCallback onPlaylists;
+  final bool showClock;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -204,46 +291,37 @@ class _TopBar extends ConsumerWidget {
     return SizedBox(
       height: 64,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 0, 24, 0),
+        padding: const EdgeInsets.fromLTRB(4, 0, 24, 0),
         child: Row(children: [
-          const Icon(Icons.playlist_play, color: AppColors.textDim),
-          const SizedBox(width: 8),
-          DropdownButton<int>(
-            value: source?.id,
-            underline: const SizedBox.shrink(),
-            items: [
-              for (final s in sources) DropdownMenuItem(value: s.id, child: Text(s.name)),
-            ],
-            onChanged: (id) => ref
-                .read(settingsProvider.notifier)
-                .update((s) => s.copyWith(activeSourceId: id)),
+          GlassPill(
+            leading: Icons.playlist_play_rounded,
+            child: DropdownButton<int>(
+              value: source?.id,
+              borderRadius: BorderRadius.circular(AppRadii.tile),
+              icon: const Icon(Icons.expand_more_rounded, color: AppColors.textDim),
+              style: const TextStyle(
+                  color: AppColors.text, fontSize: 14, fontWeight: FontWeight.w600),
+              items: [
+                for (final s in sources) DropdownMenuItem(value: s.id, child: Text(s.name)),
+              ],
+              onChanged: (id) => ref
+                  .read(settingsProvider.notifier)
+                  .update((s) => s.copyWith(activeSourceId: id)),
+            ),
           ),
           const SizedBox(width: 16),
           if (busy) ...[
             const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
             const SizedBox(width: 8),
-            Flexible(
+            Expanded(
               child: Text(status.message,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: AppColors.textDim, fontSize: 12)),
             ),
-          ] else if (source?.status == 'error')
-            Flexible(
-              child: InkWell(
-                onTap: onPlaylists,
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.error_outline, size: 16, color: AppColors.live),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(source!.error ?? 'Update failed',
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: AppColors.live, fontSize: 12)),
-                  ),
-                ]),
-              ),
-            ),
-          const Spacer(),
-          const _Clock(),
+          ] else
+            const Spacer(),
+          // Import errors are shown on the Playlists page, not up here.
+          if (showClock) const _Clock(),
         ]),
       ),
     );
@@ -294,37 +372,40 @@ class _Welcome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        body: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Image.asset('assets/brand/logo.png', height: 180, filterQuality: FilterQuality.medium),
-              const SizedBox(height: 28),
-              Text('Welcome to CAT',
-                  style: Theme.of(context).textTheme.headlineMedium),
-              const SizedBox(height: 12),
-              const Text(
-                'Add your Xtream Codes login or an M3U playlist to get started. '
-                'This app does not include any channels — you need a subscription from your provider.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textDim),
-              ),
-              const SizedBox(height: 28),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18)),
-                onPressed: () => showSourceDialog(context),
-                icon: const Icon(Icons.add),
-                label: const Text('Add playlist'),
-              ),
-              const SizedBox(height: 40),
-              const EmptyState(
-                icon: Icons.tips_and_updates_outlined,
-                title: 'Supports',
-                message: 'Xtream Codes API · M3U / M3U8 (URL or file) · XMLTV guides (.xml / .xml.gz) · '
-                    'catch-up · HEVC, AC3/E-AC3 and almost every other codec via libmpv',
-              ),
-            ]),
+        body: AppBackdrop(
+          hero: true,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Image.asset('assets/brand/logo.png', height: 180, filterQuality: FilterQuality.medium),
+                const SizedBox(height: 28),
+                Text('Welcome to CAT',
+                    style: Theme.of(context).textTheme.headlineMedium),
+                const SizedBox(height: 12),
+                const Text(
+                  'Add your Xtream Codes login or an M3U playlist to get started. '
+                  'This app does not include any channels — you need a subscription from your provider.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.textDim),
+                ),
+                const SizedBox(height: 28),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18)),
+                  onPressed: () => showSourceDialog(context),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add playlist'),
+                ),
+                const SizedBox(height: 40),
+                const EmptyState(
+                  icon: Icons.tips_and_updates_outlined,
+                  title: 'Supports',
+                  message: 'Xtream Codes API · M3U / M3U8 (URL or file) · XMLTV guides (.xml / .xml.gz) · '
+                      'catch-up · HEVC, AC3/E-AC3 and almost every other codec via libmpv',
+                ),
+              ].animate(interval: 70.ms).fadeIn(duration: 450.ms).slideY(begin: 0.08)),
+            ),
           ),
         ),
       );

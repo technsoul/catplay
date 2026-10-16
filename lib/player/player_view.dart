@@ -9,6 +9,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../app/providers.dart';
 import '../core/models.dart';
+import '../core/platform.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'app_player.dart';
@@ -86,6 +87,7 @@ class _PlayerViewState extends ConsumerState<PlayerView> {
       widget.onExpand?.call();
       return;
     }
+    if (!isDesktop) return; // TVs and phones are always full screen
     final fs = await windowManager.isFullScreen();
     await windowManager.setFullScreen(!fs);
   }
@@ -107,11 +109,25 @@ class _PlayerViewState extends ConsumerState<PlayerView> {
     final live = _p.state.value.playable?.isLive ?? false;
     final k = e.logicalKey;
     _bump();
-    if (k == LogicalKeyboardKey.space || k == LogicalKeyboardKey.keyK) {
+    if (k == LogicalKeyboardKey.space || k == LogicalKeyboardKey.keyK ||
+        k == LogicalKeyboardKey.select || k == LogicalKeyboardKey.enter ||
+        k == LogicalKeyboardKey.mediaPlayPause) {
       _p.player.playOrPause();
+    } else if (k == LogicalKeyboardKey.mediaPlay) {
+      _p.player.play();
+    } else if (k == LogicalKeyboardKey.mediaPause) {
+      _p.player.pause();
+    } else if (live && k == LogicalKeyboardKey.channelUp) {
+      _zap(-1);
+    } else if (live && k == LogicalKeyboardKey.channelDown) {
+      _zap(1);
     } else if (k == LogicalKeyboardKey.keyF || k == LogicalKeyboardKey.f11) {
       _toggleFullscreen();
-    } else if (k == LogicalKeyboardKey.escape) {
+    } else if (k == LogicalKeyboardKey.escape || k == LogicalKeyboardKey.goBack) {
+      if (!isDesktop) {
+        widget.onBack?.call();
+        return KeyEventResult.handled;
+      }
       windowManager.isFullScreen().then((fs) {
         if (fs) {
           windowManager.setFullScreen(false);
@@ -405,18 +421,20 @@ class _Controls extends ConsumerWidget {
                           ],
                         ),
                       ],
-                      IconButton(
-                        tooltip: compact
-                            ? 'Mini player (always on top)'
-                            : 'Mini player — always on top (P)',
-                        icon: const Icon(Icons.picture_in_picture_alt),
-                        onPressed: MiniMode.enter,
-                      ),
-                      IconButton(
-                        tooltip: compact ? 'Full screen' : 'Full screen (F)',
-                        icon: const Icon(Icons.fullscreen),
-                        onPressed: onFullscreen,
-                      ),
+                      if (isDesktop)
+                        IconButton(
+                          tooltip: compact
+                              ? 'Mini player (always on top)'
+                              : 'Mini player — always on top (P)',
+                          icon: const Icon(Icons.picture_in_picture_alt),
+                          onPressed: MiniMode.enter,
+                        ),
+                      if (isDesktop || compact)
+                        IconButton(
+                          tooltip: compact ? 'Full screen' : 'Full screen (F)',
+                          icon: const Icon(Icons.fullscreen),
+                          onPressed: onFullscreen,
+                        ),
                     ],
                   ),
                 ],
@@ -686,9 +704,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
 
   @override
   void dispose() {
-    windowManager.isFullScreen().then((fs) {
-      if (fs) windowManager.setFullScreen(false);
-    });
+    if (isDesktop) {
+      windowManager.isFullScreen().then((fs) {
+        if (fs) windowManager.setFullScreen(false);
+      });
+    }
     if (widget.stopOnExit) _player.stop();
     super.dispose();
   }

@@ -5,11 +5,13 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../player/app_player.dart';
 import '../player/mini_player.dart';
+import '../ui/glass.dart';
 import '../ui/theme.dart';
 
 const pinMinLength = 4;
@@ -223,40 +225,43 @@ class _LockScreenState extends ConsumerState<_LockScreen> {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return Material(
-      color: AppColors.bg,
-      child: Focus(
-        focusNode: _focus,
-        onKeyEvent: _onKey,
-        child: GestureDetector(
-          onTap: _focus.requestFocus,
-          behavior: HitTestBehavior.opaque,
-          child: Center(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Image.asset('assets/brand/mark.png', width: 64, height: 64, filterQuality: FilterQuality.medium),
-              const SizedBox(height: 20),
-              Text('Enter PIN', style: t.headlineSmall),
-              const SizedBox(height: 24),
-              Row(mainAxisSize: MainAxisSize.min, children: [
-                for (var i = 0; i < max(pinMinLength, _pin.length); i++)
-                  Container(
-                    width: 14,
-                    height: 14,
-                    margin: const EdgeInsets.symmetric(horizontal: 7),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: i < _pin.length ? AppColors.accent : Colors.transparent,
-                      border: Border.all(color: i < _pin.length ? AppColors.accent : AppColors.textDim),
+      type: MaterialType.transparency,
+      child: AppBackdrop(
+        hero: true,
+          child: Focus(
+          focusNode: _focus,
+          onKeyEvent: _onKey,
+          child: GestureDetector(
+            onTap: _focus.requestFocus,
+            behavior: HitTestBehavior.opaque,
+            child: Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Image.asset('assets/brand/mark.png', width: 64, height: 64, filterQuality: FilterQuality.medium),
+                const SizedBox(height: 20),
+                Text('Enter PIN', style: t.headlineSmall),
+                const SizedBox(height: 24),
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  for (var i = 0; i < max(pinMinLength, _pin.length); i++)
+                    Container(
+                      width: 14,
+                      height: 14,
+                      margin: const EdgeInsets.symmetric(horizontal: 7),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: i < _pin.length ? AppColors.accent : Colors.transparent,
+                        border: Border.all(color: i < _pin.length ? AppColors.accent : AppColors.textDim),
+                      ),
                     ),
+                ]),
+                SizedBox(
+                  height: 40,
+                  child: Center(
+                    child: Text(_error ?? '', style: const TextStyle(color: AppColors.live)),
                   ),
-              ]),
-              SizedBox(
-                height: 40,
-                child: Center(
-                  child: Text(_error ?? '', style: const TextStyle(color: AppColors.live)),
                 ),
-              ),
-              _Keypad(onDigit: _digit, onBackspace: _backspace, onSubmit: _submit),
-            ]),
+                _Keypad(onDigit: _digit, onBackspace: _backspace, onSubmit: _submit),
+              ].animate(interval: 50.ms).fadeIn(duration: 400.ms).slideY(begin: 0.1)),
+            ),
           ),
         ),
       ),

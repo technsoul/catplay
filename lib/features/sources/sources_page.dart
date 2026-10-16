@@ -20,28 +20,27 @@ class SourcesPage extends ConsumerWidget {
     final imports = ref.watch(importProvider);
     final active = ref.watch(activeSourceProvider);
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(16, 4, 24, 24),
       children: [
-        Row(children: [
-          Text('Playlists', style: Theme.of(context).textTheme.headlineSmall),
-          const Spacer(),
-          FilledButton.icon(
+        PageHeader(
+          eyebrow: 'Xtream Codes logins and M3U playlists',
+          title: 'Playlists',
+          trailing: FilledButton.icon(
             onPressed: () => showSourceDialog(context),
             icon: const Icon(Icons.add),
             label: const Text('Add playlist'),
           ),
-        ]),
-        const SizedBox(height: 4),
+        ),
+        const SizedBox(height: 8),
         const Text(
-          'Xtream Codes logins and M3U playlists. Playlists refresh automatically '
-          '(see Settings); the TV guide refreshes separately.',
+          'Playlists refresh automatically (see Settings); the TV guide refreshes separately.',
           style: TextStyle(color: AppColors.textDim),
         ),
         const SizedBox(height: 20),
         if (sources.isEmpty)
           const EmptyState(icon: Icons.playlist_add, title: 'No playlists yet'),
-        for (final s in sources) ...[
-          _SourceCard(source: s, status: imports[s.id], isActive: active?.id == s.id),
+        for (final (i, s) in sources.indexed) ...[
+          _SourceCard(source: s, status: imports[s.id], isActive: active?.id == s.id).enter(i + 1),
           const SizedBox(height: 12),
         ],
       ],

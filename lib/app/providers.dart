@@ -14,11 +14,16 @@ class AppPaths {
     required this.epgDir,
     required this.importTemp,
     required this.imageCache,
+    required this.downloads,
+    required this.downloadsIndex,
   });
   final String database;
   final String epgDir;
   final String importTemp;
   final String imageCache;
+  /// Where downloaded movies/episodes are saved.
+  final String downloads;
+  final String downloadsIndex;
 }
 
 /// Overridden in main() once paths/DB are ready.

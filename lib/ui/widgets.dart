@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../core/image_cache.dart';
+import 'glass.dart';
 import 'theme.dart';
+
+export 'glass.dart';
 
 /// Channel logo / poster with disk cache and an initials fallback.
 class NetLogo extends StatelessWidget {
@@ -149,7 +152,7 @@ class Tag extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
         decoration: BoxDecoration(
-          color: const Color(0xFFD9DAE0),
+          color: AppColors.textSoft,
           borderRadius: BorderRadius.circular(4),
         ),
         child: Text(text,
@@ -157,7 +160,7 @@ class Tag extends StatelessWidget {
       );
 }
 
-/// Circular glass icon button; `selected` fills it light with a dark icon.
+/// Circular glass icon button; see [GlassIconButton].
 class RoundIconButton extends StatelessWidget {
   const RoundIconButton({
     super.key,
@@ -175,23 +178,12 @@ class RoundIconButton extends StatelessWidget {
   final double size;
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-        message: tooltip,
-        child: Material(
-          color: selected ? AppColors.text : AppColors.glass,
-          shape: CircleBorder(
-              side: BorderSide(color: selected ? Colors.transparent : AppColors.glassBorder)),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onPressed,
-            child: SizedBox(
-              width: size,
-              height: size,
-              child: Icon(icon,
-                  size: size * 0.44, color: selected ? AppColors.bg : AppColors.text),
-            ),
-          ),
-        ),
+  Widget build(BuildContext context) => GlassIconButton(
+        icon: icon,
+        tooltip: tooltip,
+        onPressed: onPressed,
+        selected: selected,
+        size: size,
       );
 }
 
@@ -210,7 +202,7 @@ class SectionTitle extends StatelessWidget {
                 style: Theme.of(context)
                     .textTheme
                     .titleLarge
-                    ?.copyWith(fontWeight: FontWeight.w600, letterSpacing: -0.2)),
+                    ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.4)),
             const Spacer(),
             ?trailing,
           ],

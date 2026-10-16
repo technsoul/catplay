@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:path/path.dart' as p;
@@ -15,6 +16,7 @@ import 'app/shell.dart';
 import 'core/db/database.dart';
 import 'core/image_cache.dart';
 import 'core/logging.dart';
+import 'core/platform.dart';
 import 'data/repository.dart';
 import 'player/mini_player.dart';
 import 'ui/theme.dart';
@@ -25,11 +27,19 @@ Future<void> main() async {
   final support = await getApplicationSupportDirectory();
   final cache = await getApplicationCacheDirectory();
   final temp = await getTemporaryDirectory();
+  // Android keeps downloads in the app's external storage folder.
+  final userDownloads = Platform.isAndroid
+      ? await getExternalStorageDirectory().catchError((Object _) => null)
+      : await getDownloadsDirectory().catchError((Object _) => null);
   final paths = AppPaths(
     database: p.join(support.path, 'iptv.db'),
     epgDir: p.join(support.path, 'epg'),
     importTemp: p.join(temp.path, 'iptv_import'),
     imageCache: p.join(cache.path, 'images'),
+    downloads: userDownloads != null
+        ? p.join(userDownloads.path, Platform.isAndroid ? 'Downloads' : 'CAT')
+        : p.join(support.path, 'downloads'),
+    downloadsIndex: p.join(support.path, 'downloads.json'),
   );
   await Directory(support.path).create(recursive: true);
   await AppLog.init(p.join(support.path, 'logs'));
@@ -45,20 +55,22 @@ Future<void> main() async {
   };
 
   MediaKit.ensureInitialized();
-  await windowManager.ensureInitialized();
-  await windowManager.waitUntilReadyToShow(
-    const WindowOptions(
-      size: Size(1440, 900),
-      minimumSize: Size(1100, 680),
-      center: true,
-      title: 'CAT',
-      backgroundColor: AppColors.bg,
-    ),
-    () async {
-      await windowManager.show();
-      await windowManager.focus();
-    },
-  );
+  if (isDesktop) {
+    await windowManager.ensureInitialized();
+    await windowManager.waitUntilReadyToShow(
+      const WindowOptions(
+        size: Size(1440, 900),
+        minimumSize: Size(1100, 680),
+        center: true,
+        title: 'CAT',
+        backgroundColor: AppColors.bg,
+      ),
+      () async {
+        await windowManager.show();
+        await windowManager.focus();
+      },
+    );
+  }
 
   CachedNetImage.init(paths.imageCache);
   final db = await AppDatabase.open(paths.database);
@@ -92,6 +104,48 @@ class IptvApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: buildTheme(),
         home: const AppShell(),
-        builder: (_, child) => AppLockGate(child: MiniModeHost(child: child!)),
+        // TV remotes send "select" for the OK button.
+        shortcuts: {
+          ...WidgetsApp.defaultShortcuts,
+          const SingleActivator(LogicalKeyboardKey.select): const ActivateIntent(),
+        },
+        builder: (_, child) =>
+            _TvScale(child: AppLockGate(child: MiniModeHost(child: child!))),
       );
+}
+
+/// The UI is laid out for a desktop window (at least 1100 logical px wide).
+/// TVs report about 960x540, so draw on a 1280-wide canvas scaled to fit.
+class _TvScale extends StatelessWidget {
+  const _TvScale({required this.child});
+  final Widget child;
+  static const _width = 1280.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final size = mq.size;
+    if (isDesktop || size.width >= _width || size.width == 0) return child;
+    final scale = size.width / _width;
+    final virtual = Size(_width, size.height / scale);
+    return ColoredBox(
+      color: AppColors.bg,
+      child: FittedBox(
+        fit: BoxFit.contain,
+        alignment: Alignment.topLeft,
+        child: SizedBox.fromSize(
+          size: virtual,
+          child: MediaQuery(
+            data: mq.copyWith(
+              size: virtual,
+              padding: mq.padding / scale,
+              viewPadding: mq.viewPadding / scale,
+              viewInsets: mq.viewInsets / scale,
+            ),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
 }

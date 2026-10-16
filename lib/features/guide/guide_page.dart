@@ -49,6 +49,8 @@ class _GuidePageState extends ConsumerState<GuidePage> {
 
   Repository get _repo => ref.read(repositoryProvider);
 
+  String _text = '';
+
   static DateTime _startOfDay(DateTime t) => DateTime(t.year, t.month, t.day);
 
   ItemQuery get _query => ItemQuery(
@@ -56,6 +58,7 @@ class _GuidePageState extends ConsumerState<GuidePage> {
         sourceId: widget.source.id,
         categoryId: _categoryId,
         favoritesOnly: _favoritesOnly,
+        text: _text,
       );
 
   @override
@@ -154,7 +157,24 @@ class _GuidePageState extends ConsumerState<GuidePage> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.fromLTRB(16, 4, 24, 4),
+          child: PageHeader(
+            eyebrow: "What's on",
+            title: 'TV Guide',
+            trailing: SizedBox(
+              width: 300,
+              child: GlassSearchField(
+                hint: 'Search channels',
+                onChanged: (v) {
+                  setState(() => _text = v);
+                  _rebuild();
+                },
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 24, 8),
           child: Row(
             children: [
               SizedBox(
@@ -213,8 +233,12 @@ class _GuidePageState extends ConsumerState<GuidePage> {
             ],
           ),
         ),
-        const Divider(height: 1),
-        Expanded(child: _grid()),
+        Expanded(
+          child: GlassPanel(
+            margin: const EdgeInsets.fromLTRB(12, 4, 24, 16),
+            child: _grid(),
+          ),
+        ),
       ],
     );
   }
@@ -227,7 +251,9 @@ class _GuidePageState extends ConsumerState<GuidePage> {
     final total = items.total;
     if (total == null) return const Center(child: CircularProgressIndicator());
     if (total == 0) {
-      return const EmptyState(icon: Icons.live_tv, title: 'No channels');
+      return EmptyState(
+          icon: _text.isEmpty ? Icons.live_tv : Icons.search_off,
+          title: _text.isEmpty ? 'No channels' : 'No channels match "$_text"');
     }
     if (widget.source.lastEpg == null) {
       return EmptyState(
@@ -445,11 +471,15 @@ class _GuideRow extends StatelessWidget {
         bottom: 4,
         child: Material(
           color: live
-              ? AppColors.accent.withValues(alpha: 0.28)
+              ? AppColors.accent.withValues(alpha: 0.22)
               : (past ? AppColors.surface : AppColors.surfaceHigh),
-          borderRadius: BorderRadius.circular(6),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: BorderSide(
+                color: live ? AppColors.accent.withValues(alpha: 0.6) : AppColors.glassBorder),
+          ),
           child: InkWell(
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(10),
             onTap: () => onTapProgramme(p),
             child: Tooltip(
               message: '${p.title}\n${hhmm(p.start)} – ${hhmm(p.stop)}',

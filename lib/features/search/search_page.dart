@@ -65,10 +65,12 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   Widget build(BuildContext context) {
     final multiSource = _sourceNames.length > 1;
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 4, 24, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const PageHeader(eyebrow: 'Channels, movies and series', title: 'Search'),
+          const SizedBox(height: 16),
           TextField(
             controller: _controller,
             focusNode: widget.focusNode,

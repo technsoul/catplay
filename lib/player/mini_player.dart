@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../core/platform.dart';
 import 'app_player.dart';
 
 /// Picture-in-picture: shrinks the app window to a small, frameless,
@@ -27,7 +28,7 @@ class MiniMode {
   static bool _busy = false;
 
   static Future<void> enter() async {
-    if (active.value || _busy) return;
+    if (!isDesktop || active.value || _busy) return;
     _busy = true;
     try {
       if (await windowManager.isFullScreen()) {
@@ -52,7 +53,7 @@ class MiniMode {
   }
 
   static Future<void> exit() async {
-    if (!active.value || _busy) return;
+    if (!isDesktop || !active.value || _busy) return;
     _busy = true;
     try {
       await windowManager.setAlwaysOnTop(false);

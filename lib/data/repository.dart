@@ -17,6 +17,7 @@ class ItemQuery {
     this.categoryId,
     this.favoritesOnly = false,
     this.sort = ItemSort.playlist,
+    this.text = '',
   });
 
   final ItemKind kind;
@@ -24,6 +25,7 @@ class ItemQuery {
   final int? categoryId; // null = all
   final bool favoritesOnly;
   final ItemSort sort;
+  final String text; // name filter; each word is a prefix match
 
   @override
   bool operator ==(Object other) =>
@@ -32,10 +34,11 @@ class ItemQuery {
       other.sourceId == sourceId &&
       other.categoryId == categoryId &&
       other.favoritesOnly == favoritesOnly &&
-      other.sort == sort;
+      other.sort == sort &&
+      other.text == text;
 
   @override
-  int get hashCode => Object.hash(kind, sourceId, categoryId, favoritesOnly, sort);
+  int get hashCode => Object.hash(kind, sourceId, categoryId, favoritesOnly, sort, text);
 }
 
 /// All SQL lives here. Every call runs on the DB worker isolate.
@@ -138,7 +141,23 @@ class Repository {
       p.add(q.categoryId);
     }
     if (q.favoritesOnly) w.add('f.key IS NOT NULL');
+    final match = _ftsMatch(q.text);
+    if (match != null) {
+      w.add('i.id IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?)');
+      p.add(match);
+    }
     return (w.join(' AND '), p);
+  }
+
+  /// FTS5 query where each word is a prefix match; null when [text] has none.
+  static String? _ftsMatch(String text) {
+    final tokens = text
+        .toLowerCase()
+        .split(RegExp(r'[^\p{L}\p{N}]+', unicode: true))
+        .where((t) => t.isNotEmpty)
+        .toList();
+    if (tokens.isEmpty) return null;
+    return tokens.map((t) => '"${t.replaceAll('"', '')}"*').join(' ');
   }
 
   String _order(ItemSort s) => switch (s) {
@@ -191,13 +210,8 @@ class Repository {
   /// Full-text search. Each word is a prefix match; all words must match.
   Future<List<MediaItem>> search(String text,
       {ItemKind? kind, int? sourceId, int limit = 200}) async {
-    final tokens = text
-        .toLowerCase()
-        .split(RegExp(r'[^\p{L}\p{N}]+', unicode: true))
-        .where((t) => t.isNotEmpty)
-        .toList();
-    if (tokens.isEmpty) return const [];
-    final match = tokens.map((t) => '"${t.replaceAll('"', '')}"*').join(' ');
+    final match = _ftsMatch(text);
+    if (match == null) return const [];
     final w = <String>['items_fts MATCH ?'];
     final p = <Object?>[match];
     if (kind != null) {

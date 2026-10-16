@@ -11,6 +11,7 @@ import '../core/logging.dart';
 import '../core/models.dart';
 import '../core/settings.dart';
 import '../data/repository.dart';
+import '../downloads/downloads.dart';
 
 enum PlayPhase { idle, loading, playing, reconnecting, error }
 
@@ -187,13 +188,17 @@ class AppPlayer {
       headers.putIfAbsent('User-Agent', () => source.userAgent!);
     }
     if (token != _openToken) return; // superseded by a newer open
+    // Downloaded movies/episodes play from disk.
+    final local = p.isLive ? null : _ref.read(downloadsProvider.notifier).localPath(p.sourceId, p.key);
     // Position events from the previous media can still arrive right after
     // switching; only progress measured within this open counts.
     _lastPos = null;
     _progress = Duration.zero;
     _ignorePosUntil = DateTime.now().add(const Duration(milliseconds: 700));
     await player.open(
-      Media(p.url, httpHeaders: headers.isEmpty ? null : headers),
+      local != null
+          ? Media(local)
+          : Media(p.url, httpHeaders: headers.isEmpty ? null : headers),
       play: true,
     );
   }

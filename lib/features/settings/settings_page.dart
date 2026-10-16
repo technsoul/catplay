@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/app_lock.dart';
 import '../../app/providers.dart';
 import '../../core/image_cache.dart';
+import '../../core/platform.dart';
 import '../../core/settings.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
@@ -84,18 +85,28 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             subtitle: 'More buffer survives unstable connections but zaps slower. Takes effect after restart.',
             onChanged: (v) => _set((x) => x.copyWith(cacheSeconds: v.round())),
           ),
-          ListTile(
-            title: const Text('Xtream live stream format'),
-            subtitle: const Text('MPEG-TS is the most compatible; HLS can work better through proxies'),
-            trailing: SegmentedButton<String>(
+          Builder(builder: (context) {
+            const about = Text('MPEG-TS is the most compatible; HLS can work better through proxies');
+            final format = SegmentedButton<String>(
               segments: const [
                 ButtonSegment(value: 'ts', label: Text('MPEG-TS')),
                 ButtonSegment(value: 'm3u8', label: Text('HLS')),
               ],
               selected: {s.liveFormat},
               onSelectionChanged: (v) => _set((x) => x.copyWith(liveFormat: v.first)),
-            ),
-          ),
+            );
+            // Phones: the toggle goes under the text instead of beside it.
+            return context.isCompact
+                ? ListTile(
+                    title: const Text('Xtream live stream format'),
+                    subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      about,
+                      const SizedBox(height: 8),
+                      format,
+                    ]),
+                  )
+                : ListTile(title: const Text('Xtream live stream format'), subtitle: about, trailing: format);
+          }),
           ListTile(
             title: const Text('User-Agent'),
             subtitle: Padding(
@@ -248,6 +259,27 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         ],
       ),
     ];
+    if (context.isCompact) {
+      // Phones: every section in one scrolling list, keyboard help omitted.
+      final shown = isMobile ? sections.where((x) => x.title != 'Keyboard shortcuts') : sections;
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+        children: [
+          const PageHeader(title: 'Settings'),
+          for (final (i, x) in shown.indexed) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
+              child: Row(children: [
+                Icon(x.icon, size: 18, color: AppColors.accentBright),
+                const SizedBox(width: 8),
+                Text(x.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              ]),
+            ),
+            x.enter(i + 1),
+          ],
+        ],
+      );
+    }
     final sec = sections[_tab.clamp(0, sections.length - 1)];
     return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       SizedBox(
@@ -355,27 +387,42 @@ class _SliderTileState extends State<_SliderTile> {
   double? _drag;
 
   @override
-  Widget build(BuildContext context) => ListTile(
+  Widget build(BuildContext context) {
+    final slider = Row(children: [
+      Expanded(
+        child: Slider(
+          value: (_drag ?? widget.value).clamp(widget.min, widget.max),
+          min: widget.min,
+          max: widget.max,
+          divisions: widget.divisions,
+          onChanged: (v) => setState(() => _drag = v),
+          onChangeEnd: (v) {
+            widget.onChanged(v);
+            setState(() => _drag = null);
+          },
+        ),
+      ),
+      SizedBox(width: 56, child: Text(widget.label, textAlign: TextAlign.right)),
+    ]);
+    if (context.isCompact) {
+      // Too narrow for a trailing slider: put it under the title.
+      return ListTile(
+        title: Text(widget.title),
+        subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (widget.subtitle != null) Text(widget.subtitle!),
+          slider,
+        ]),
+      );
+    }
+    return _wide(slider);
+  }
+
+  Widget _wide(Widget slider) => ListTile(
         title: Text(widget.title),
         subtitle: widget.subtitle == null ? null : Text(widget.subtitle!),
         trailing: SizedBox(
           width: 320,
-          child: Row(children: [
-            Expanded(
-              child: Slider(
-                value: (_drag ?? widget.value).clamp(widget.min, widget.max),
-                min: widget.min,
-                max: widget.max,
-                divisions: widget.divisions,
-                onChanged: (v) => setState(() => _drag = v),
-                onChangeEnd: (v) {
-                  widget.onChanged(v);
-                  setState(() => _drag = null);
-                },
-              ),
-            ),
-            SizedBox(width: 56, child: Text(widget.label, textAlign: TextAlign.right)),
-          ]),
+          child: slider,
         ),
       );
 }

@@ -24,8 +24,10 @@ import 'ui/theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final support = await getApplicationSupportDirectory();
-  final cache = await getApplicationCacheDirectory();
+  // The desktop phone preview keeps its own data, apart from the real install.
+  final preview = isPhonePreview ? 'phone-preview' : '';
+  final support = Directory(p.join((await getApplicationSupportDirectory()).path, preview));
+  final cache = Directory(p.join((await getApplicationCacheDirectory()).path, preview));
   final temp = await getTemporaryDirectory();
   // Android keeps downloads in the app's external storage folder.
   final userDownloads = Platform.isAndroid
@@ -56,7 +58,16 @@ Future<void> main() async {
 
   MediaKit.ensureInitialized();
   if (isMobile) {
-    // Phones: landscape, edge to edge, system bars hidden until swiped in.
+    // Phones: any orientation, drawn edge to edge behind transparent system
+    // bars. The player switches to landscape full screen on its own.
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.light,
+    ));
+  } else if (isTv) {
     await SystemChrome.setPreferredOrientations(
         [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
@@ -64,9 +75,9 @@ Future<void> main() async {
   if (isDesktop) {
     await windowManager.ensureInitialized();
     await windowManager.waitUntilReadyToShow(
-      const WindowOptions(
-        size: Size(1440, 900),
-        minimumSize: Size(1100, 680),
+      WindowOptions(
+        size: isPhonePreview ? const Size(412, 892) : const Size(1440, 900),
+        minimumSize: isPhonePreview ? const Size(320, 360) : const Size(1100, 680),
         center: true,
         title: 'CAT',
         backgroundColor: AppColors.bg,
@@ -115,14 +126,14 @@ class IptvApp extends StatelessWidget {
           ...WidgetsApp.defaultShortcuts,
           const SingleActivator(LogicalKeyboardKey.select): const ActivateIntent(),
         },
-        builder: (_, child) =>
-            _TvScale(child: AppLockGate(child: MiniModeHost(child: child!))),
+        builder: (_, child) => _TvScale(
+            child: _CompactDialogs(child: AppLockGate(child: MiniModeHost(child: child!)))),
       );
 }
 
-/// The UI is laid out for a desktop window (at least 1100 logical px wide).
-/// TVs report about 960x540 and phones about 900x400 in landscape, so the UI
-/// is drawn on a larger canvas and scaled down to fit.
+/// The TV layout is made for a desktop window (at least 1100 logical px
+/// wide). TVs report about 960x540, so it is drawn on a 1280x720 canvas and
+/// scaled down to fit. Phones get their own compact layout, unscaled.
 class _TvScale extends StatelessWidget {
   const _TvScale({required this.child});
   final Widget child;
@@ -131,10 +142,8 @@ class _TvScale extends StatelessWidget {
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
     final size = mq.size;
-    if (isDesktop || size.isEmpty) return child;
-    // Phones keep the UI as large as possible; TVs are viewed from afar at
-    // a 720p-like layout.
-    final min = isMobile ? const Size(1100, 600) : const Size(1280, 720);
+    if (!isTv || size.isEmpty) return child;
+    const min = Size(1280, 720);
     final scale = [size.width / min.width, size.height / min.height, 1.0]
         .reduce((a, b) => a < b ? a : b);
     if (scale >= 1) return child;
@@ -157,6 +166,27 @@ class _TvScale extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Dialogs keep a 40 px margin by default, which leaves little room on a
+/// phone; narrow screens get 16 px instead.
+class _CompactDialogs extends StatelessWidget {
+  const _CompactDialogs({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.sizeOf(context).width >= 600) return child;
+    final theme = Theme.of(context);
+    return Theme(
+      data: theme.copyWith(
+        dialogTheme: theme.dialogTheme.copyWith(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        ),
+      ),
+      child: child,
     );
   }
 }

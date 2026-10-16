@@ -64,13 +64,16 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   @override
   Widget build(BuildContext context) {
     final multiSource = _sourceNames.length > 1;
+    final compact = context.isCompact;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 24, 16),
+      padding: compact ? const EdgeInsets.fromLTRB(12, 12, 12, 0) : const EdgeInsets.fromLTRB(16, 4, 24, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const PageHeader(eyebrow: 'Channels, movies and series', title: 'Search'),
-          const SizedBox(height: 16),
+          if (!compact) ...[
+            const PageHeader(eyebrow: 'Channels, movies and series', title: 'Search'),
+            const SizedBox(height: 16),
+          ],
           TextField(
             controller: _controller,
             focusNode: widget.focusNode,
@@ -94,6 +97,10 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           ),
           const SizedBox(height: 12),
           Row(children: [
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: [
             for (final (label, kind) in const [
               ('All', null),
               ('Live TV', ItemKind.live),
@@ -111,7 +118,10 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                   },
                 ),
               ),
-            const Spacer(),
+                ]),
+              ),
+            ),
+            const SizedBox(width: 8),
             if (_searching)
               const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
             else if (_controller.text.isNotEmpty)

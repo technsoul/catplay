@@ -24,7 +24,9 @@ class DownloadsPage extends ConsumerWidget {
     final used = done.fold<int>(0, (n, t) => n + t.received);
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 24, 24),
+      padding: context.isCompact
+          ? const EdgeInsets.fromLTRB(12, 12, 12, 24)
+          : const EdgeInsets.fromLTRB(16, 4, 24, 24),
       children: [
         PageHeader(
           eyebrow: done.isEmpty
@@ -42,7 +44,7 @@ class DownloadsPage extends ConsumerWidget {
           const EmptyState(
             icon: Icons.download_rounded,
             title: 'Nothing downloaded yet',
-            message: 'Use the download button on a movie or episode to save it to this computer '
+            message: 'Use the download button on a movie or episode to save it to this device '
                 'and watch it without an internet connection.',
           ),
         if (active.isNotEmpty) ...[
@@ -104,6 +106,7 @@ class _DownloadTile extends ConsumerWidget {
       DownloadStatus.done => formatBytes(t.received),
     };
 
+    final compact = context.isCompact;
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadii.card),
@@ -114,11 +117,11 @@ class _DownloadTile extends ConsumerWidget {
             NetLogo(
               url: t.logo,
               name: t.subtitle ?? t.title,
-              width: t.kind == ItemKind.movie ? 60 : 140,
-              height: 84,
+              width: t.kind == ItemKind.movie ? (compact ? 48 : 60) : (compact ? 96 : 140),
+              height: compact ? (t.kind == ItemKind.movie ? 72 : 54) : 84,
               fit: BoxFit.cover,
             ),
-            const SizedBox(width: 14),
+            SizedBox(width: compact ? 10 : 14),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 if (t.subtitle != null)
@@ -152,7 +155,7 @@ class _DownloadTile extends ConsumerWidget {
                         fontSize: 12)),
               ]),
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: compact ? 0 : 8),
             if (done)
               IconButton(
                 tooltip: 'Play',

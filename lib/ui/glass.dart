@@ -131,6 +131,7 @@ class GlassTile extends StatefulWidget {
     this.onTap,
     this.onDoubleTap,
     this.onSecondaryTapUp,
+    this.onLongPress,
     this.radius = AppRadii.tile,
     this.padding,
   });
@@ -140,6 +141,7 @@ class GlassTile extends StatefulWidget {
   final VoidCallback? onTap;
   final VoidCallback? onDoubleTap;
   final GestureTapUpCallback? onSecondaryTapUp;
+  final VoidCallback? onLongPress;
   final double radius;
   final EdgeInsetsGeometry? padding;
 
@@ -177,6 +179,7 @@ class _GlassTileState extends State<GlassTile> {
           onTap: widget.onTap,
           onDoubleTap: widget.onDoubleTap,
           onSecondaryTapUp: widget.onSecondaryTapUp,
+          onLongPress: widget.onLongPress,
           onHover: (v) => setState(() => _hover = v),
           child: widget.padding == null
               ? widget.child
@@ -324,7 +327,7 @@ class GlassPill extends StatelessWidget {
             Icon(leading, size: 20, color: AppColors.textDim),
             const SizedBox(width: 8),
           ],
-          DropdownButtonHideUnderline(child: child),
+          Flexible(child: DropdownButtonHideUnderline(child: child)),
         ]),
       );
 }

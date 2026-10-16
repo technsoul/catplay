@@ -22,6 +22,9 @@ class LivePage extends ConsumerStatefulWidget {
   ConsumerState<LivePage> createState() => _LivePageState();
 }
 
+/// Height of one channel row.
+const _rowExtent = 80.0;
+
 class _LivePageState extends ConsumerState<LivePage> {
   CategorySelection _cat = const CategorySelection.all();
   PagedItems? _items;
@@ -90,8 +93,8 @@ class _LivePageState extends ConsumerState<LivePage> {
     final idx = _items?.indexOf(item);
     if (idx != null && _scroll.hasClients) {
       final pos = _scroll.position;
-      final top = idx * 64.0;
-      if (top < pos.pixels || top + 64 > pos.pixels + pos.viewportDimension) {
+      final top = idx * _rowExtent;
+      if (top < pos.pixels || top + _rowExtent > pos.pixels + pos.viewportDimension) {
         _scroll.animateTo((top - pos.viewportDimension / 2).clamp(0, pos.maxScrollExtent),
             duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
       }
@@ -140,6 +143,7 @@ class _LivePageState extends ConsumerState<LivePage> {
   @override
   Widget build(BuildContext context) {
     final playing = ref.watch(appPlayerProvider).state;
+    if (context.isCompact) return _compact(playing, landscape: context.isCompactLandscape);
     return Row(
       children: [
         SizedBox(
@@ -175,7 +179,130 @@ class _LivePageState extends ConsumerState<LivePage> {
     );
   }
 
+  void _showSchedule(MediaItem item) => showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        backgroundColor: AppColors.sheet,
+        builder: (ctx) => SizedBox(
+          height: MediaQuery.sizeOf(ctx).height * 0.7,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Row(children: [
+                NetLogo(url: item.logo, name: item.name, width: 52, height: 36),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(item.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(ctx).textTheme.titleMedium),
+                ),
+              ]),
+            ),
+            Expanded(child: ChannelSchedule(item: item)),
+          ]),
+        ),
+      );
+
+  /// Phones: the preview player on top (or beside the list in landscape),
+  /// then a category pill and search, then the channels.
+  Widget _compact(ValueNotifier<PlayerUiState> playing, {required bool landscape}) {
+    final sel = _selected;
+    final browser = Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+        child: Row(children: [
+          Expanded(
+            child: CategoryButton(
+              source: widget.source,
+              kind: ItemKind.live,
+              selection: _cat,
+              onSelect: (c) {
+                setState(() => _cat = c);
+                _rebuildItems();
+              },
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: GlassSearchField(
+              hint: 'Search',
+              onChanged: (v) {
+                setState(() => _text = v);
+                _rebuildItems();
+              },
+            ),
+          ),
+        ]),
+      ),
+      Expanded(child: _channelList(playing)),
+    ]);
+    if (sel == null) return browser;
+
+    final player = Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      ClipRRect(
+        borderRadius: BorderRadius.circular(landscape ? AppRadii.tile : 0),
+        child: AspectRatio(
+          aspectRatio: 16 / 9,
+          child: PlayerView(compact: true, onExpand: _openFull),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 4, 0),
+        child: Row(children: [
+          NetLogo(url: sel.logo, name: sel.name, width: 48, height: 34, radius: 8),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              Text(sel.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              if (sel.epgId != null)
+                DefaultTextStyle.merge(
+                  style: const TextStyle(fontSize: 12),
+                  child: NowPlayingLine(sourceId: sel.sourceId, epgId: sel.epgId!),
+                ),
+            ]),
+          ),
+          IconButton(
+            tooltip: sel.isFavorite ? 'Remove from favorites' : 'Add to favorites',
+            icon: Icon(sel.isFavorite ? Icons.star_rounded : Icons.star_border_rounded,
+                color: sel.isFavorite ? AppColors.star : null),
+            onPressed: () => _toggleFav(sel),
+          ),
+          IconButton(
+            tooltip: 'Schedule',
+            icon: const Icon(Icons.event_note_rounded),
+            onPressed: () => _showSchedule(sel),
+          ),
+          IconButton(
+            tooltip: 'Full screen',
+            icon: const Icon(Icons.fullscreen_rounded),
+            onPressed: _openFull,
+          ),
+        ]),
+      ),
+    ]);
+
+    if (landscape) {
+      return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(flex: 5, child: browser),
+        Expanded(
+          flex: 6,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(4, 8, 12, 8),
+            child: player,
+          ),
+        ),
+      ]);
+    }
+    return Column(children: [player, Expanded(child: browser)]);
+  }
+
   Widget _channelList(ValueNotifier<PlayerUiState> playing) {
+    final compact = context.isCompact;
     final items = _items!;
     final total = items.total;
     if (total == null) return const Center(child: CircularProgressIndicator());
@@ -187,7 +314,9 @@ class _LivePageState extends ConsumerState<LivePage> {
         icon: _cat.favorites ? Icons.star_border : Icons.live_tv,
         title: _cat.favorites ? 'No favorite channels yet' : 'No channels here',
         message: _cat.favorites
-            ? 'Right-click a channel or use the star to add it to favorites.'
+            ? (context.isCompact
+                ? 'Long-press a channel to add it to favorites.'
+                : 'Right-click a channel or use the star to add it to favorites.')
             : null,
       );
     }
@@ -199,7 +328,7 @@ class _LivePageState extends ConsumerState<LivePage> {
           controller: _scroll,
           itemCount: total,
           padding: const EdgeInsets.symmetric(vertical: 8),
-          itemExtent: 80,
+          itemExtent: _rowExtent,
           itemBuilder: (context, i) {
             final item = items.itemAt(i);
             if (item == null) return const _ChannelSkeleton();
@@ -211,12 +340,15 @@ class _LivePageState extends ConsumerState<LivePage> {
               programmes: item.epgId == null ? null : _epg[item.epgId],
               selected: _selected?.id == item.id,
               playing: isPlaying,
-              onTap: () => _play(item, i),
+              // Phones: the first tap plays in the preview, a second tap
+              // on the playing channel goes full screen.
+              onTap: () => compact && isPlaying ? _openFull() : _play(item, i),
               onDoubleTap: () async {
                 if (!isPlaying) await _play(item, i);
                 _openFull();
               },
               onFavorite: () => _toggleFav(item),
+              onSchedule: () => _showSchedule(item),
             );
           },
         ),
@@ -316,6 +448,7 @@ class ChannelTile extends StatelessWidget {
     required this.onTap,
     required this.onDoubleTap,
     required this.onFavorite,
+    this.onSchedule,
   });
 
   final MediaItem item;
@@ -326,9 +459,11 @@ class ChannelTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onDoubleTap;
   final VoidCallback onFavorite;
+  final VoidCallback? onSchedule;
 
   @override
   Widget build(BuildContext context) {
+    final compact = context.isCompact;
     final now = DateTime.now();
     final current = programmes?.where((p) => p.isLiveAt(now)).firstOrNull;
     return Padding(
@@ -337,16 +472,22 @@ class ChannelTile extends StatelessWidget {
         selected: selected,
         radius: 16,
         onTap: onTap,
-        onDoubleTap: onDoubleTap,
+        // A double-tap handler delays single taps; phones don't need it.
+        onDoubleTap: compact ? null : onDoubleTap,
         onSecondaryTapUp: (d) => _menu(context, d.globalPosition),
+        onLongPress: () => _sheet(context),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10),
           child: Row(
             children: [
-              NetLogo(url: item.logo, name: item.name, width: 76, height: 52),
+              NetLogo(
+                  url: item.logo,
+                  name: item.name,
+                  width: compact ? 64 : 76,
+                  height: compact ? 44 : 52),
               const SizedBox(width: 12),
               SizedBox(
-                width: 34,
+                width: compact ? 28 : 34,
                 child: Text(
                   '${item.number ?? index + 1}',
                   style: const TextStyle(color: AppColors.textDim, fontSize: 12),
@@ -408,6 +549,57 @@ class ChannelTile extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Touch counterpart of the right-click menu.
+  Future<void> _sheet(BuildContext context) async {
+    final v = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: AppColors.sheet,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: NetLogo(url: item.logo, name: item.name, width: 52, height: 36),
+            title: Text(item.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.play_arrow_rounded),
+            title: const Text('Play'),
+            onTap: () => Navigator.pop(ctx, 'play'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.fullscreen_rounded),
+            title: const Text('Play full screen'),
+            onTap: () => Navigator.pop(ctx, 'full'),
+          ),
+          if (onSchedule != null && item.epgId != null)
+            ListTile(
+              leading: const Icon(Icons.event_note_rounded),
+              title: const Text('Schedule'),
+              onTap: () => Navigator.pop(ctx, 'schedule'),
+            ),
+          ListTile(
+            leading: Icon(item.isFavorite ? Icons.star_rounded : Icons.star_border_rounded,
+                color: item.isFavorite ? AppColors.star : null),
+            title: Text(item.isFavorite ? 'Remove from favorites' : 'Add to favorites'),
+            onTap: () => Navigator.pop(ctx, 'fav'),
+          ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    switch (v) {
+      case 'play':
+        onTap();
+      case 'full':
+        onDoubleTap();
+      case 'schedule':
+        onSchedule?.call();
+      case 'fav':
+        onFavorite();
+    }
   }
 
   Future<void> _menu(BuildContext context, Offset pos) async {

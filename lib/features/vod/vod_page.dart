@@ -75,6 +75,47 @@ class _VodPageState extends ConsumerState<VodPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (context.isCompact) {
+      return Column(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 4, 4),
+          child: Row(children: [
+            Expanded(
+              child: CategoryButton(
+                source: widget.source,
+                kind: widget.kind,
+                selection: _cat,
+                onSelect: (c) {
+                  setState(() => _cat = c);
+                  _rebuild();
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: GlassSearchField(
+                key: ValueKey(widget.kind),
+                hint: 'Search',
+                onChanged: (v) {
+                  setState(() => _text = v);
+                  _rebuild();
+                },
+              ),
+            ),
+            PopupMenuButton<ItemSort>(
+              tooltip: 'Sort',
+              icon: const Icon(Icons.sort_rounded),
+              initialValue: _sort,
+              onSelected: _setSort,
+              itemBuilder: (_) => [
+                for (final (v, label) in _sorts) PopupMenuItem(value: v, child: Text(label)),
+              ],
+            ),
+          ]),
+        ),
+        Expanded(child: _grid()),
+      ]);
+    }
     return Row(
       children: [
         SizedBox(
@@ -130,16 +171,11 @@ class _VodPageState extends ConsumerState<VodPage> {
                 borderRadius: BorderRadius.circular(AppRadii.tile),
                 icon: const Icon(Icons.expand_more_rounded, color: AppColors.textDim),
                 style: const TextStyle(color: AppColors.text, fontSize: 14, fontWeight: FontWeight.w600),
-                items: const [
-                  DropdownMenuItem(value: ItemSort.playlist, child: Text('Default')),
-                  DropdownMenuItem(value: ItemSort.added, child: Text('Recently added')),
-                  DropdownMenuItem(value: ItemSort.name, child: Text('Name')),
-                  DropdownMenuItem(value: ItemSort.rating, child: Text('Rating')),
+                items: [
+                  for (final (v, label) in _sorts) DropdownMenuItem(value: v, child: Text(label)),
                 ],
                 onChanged: (v) {
-                  if (v == null) return;
-                  setState(() => _sort = v);
-                  _rebuild();
+                  if (v != null) _setSort(v);
                 },
               ),
             ),
@@ -147,7 +183,20 @@ class _VodPageState extends ConsumerState<VodPage> {
         ),
       );
 
+  static const _sorts = [
+    (ItemSort.playlist, 'Default'),
+    (ItemSort.added, 'Recently added'),
+    (ItemSort.name, 'Name'),
+    (ItemSort.rating, 'Rating'),
+  ];
+
+  void _setSort(ItemSort v) {
+    setState(() => _sort = v);
+    _rebuild();
+  }
+
   Widget _grid() {
+    final compact = context.isCompact;
     final items = _items!;
     final total = items.total;
     if (total == null) return const Center(child: CircularProgressIndicator());
@@ -164,11 +213,11 @@ class _VodPageState extends ConsumerState<VodPage> {
       controller: _scroll,
       child: GridView.builder(
         controller: _scroll,
-        padding: const EdgeInsets.all(16),
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 180,
-          mainAxisSpacing: 16,
-          crossAxisSpacing: 16,
+        padding: EdgeInsets.all(compact ? 12 : 16),
+        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: compact ? Breakpoints.posterExtent : 180,
+          mainAxisSpacing: compact ? 12 : 16,
+          crossAxisSpacing: compact ? 10 : 16,
           childAspectRatio: 0.56,
         ),
         itemCount: total,

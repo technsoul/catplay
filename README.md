@@ -39,7 +39,16 @@ flutter build apk --release --split-per-abi --dart-define=FORM_FACTOR=mobile
 ```
 
 `FORM_FACTOR=tv` (the default) is laid out for a remote on a TV; `mobile` is the touch version for
-phones and tablets (landscape, full screen). Install the `armeabi-v7a` APK on most TV boxes and sticks,
+phones and tablets: portrait or landscape, bottom navigation, single-column pages, and a player that
+turns to landscape full screen. Screens narrower than 1000 px or shorter than 520 px get the phone
+layout (`lib/ui/layout.dart`).
+
+To work on the phone layout without a device, run the desktop app in a phone-sized window (it keeps
+its own data, separate from the normal desktop install):
+
+```bash
+flutter run -d windows --dart-define=FORM_FACTOR=mobile
+``` Install the `armeabi-v7a` APK on most TV boxes and sticks,
 or `arm64-v8a` on phones and newer devices. Release builds are signed with `android/key.properties`
 (or the `CAT_KEYSTORE_*` environment variables in CI) and fall back to the debug key without one.
 

@@ -5,6 +5,7 @@ import 'glass.dart';
 import 'theme.dart';
 
 export 'glass.dart';
+export 'layout.dart';
 
 /// Channel logo / poster with disk cache and an initials fallback.
 class NetLogo extends StatelessWidget {

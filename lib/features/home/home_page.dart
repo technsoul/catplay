@@ -11,6 +11,7 @@ import '../../core/models.dart';
 import '../../data/repository.dart';
 import '../../player/app_player.dart';
 import '../../player/player_view.dart';
+import '../../ui/source_picker.dart';
 import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../vod/details.dart';
@@ -137,6 +138,19 @@ class _HomePageState extends ConsumerState<HomePage> {
       ],
     ];
 
+    if (context.isCompact) {
+      return CustomScrollView(slivers: [
+        SliverToBoxAdapter(child: _CompactHero(source: widget.source, onNavigate: widget.onNavigate)),
+        if (sections.isNotEmpty)
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(Breakpoints.gutter - 4, 8, 0, 16),
+            sliver: SliverList.list(
+              children: sections.animate(interval: 40.ms).fadeIn(duration: 400.ms),
+            ),
+          ),
+      ]);
+    }
+
     return Stack(children: [
       const Positioned.fill(child: IgnorePointer(child: _LogoMark())),
       LayoutBuilder(
@@ -160,6 +174,93 @@ class _HomePageState extends ConsumerState<HomePage> {
         ]),
       ),
     ]);
+  }
+}
+
+/// Phone launcher: brand row with search and settings, the playlist picker,
+/// a greeting and the four sections as a 2×2 grid (one row in landscape).
+class _CompactHero extends StatelessWidget {
+  const _CompactHero({required this.source, required this.onNavigate});
+  final Source source;
+  final ValueChanged<int> onNavigate;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = source;
+    final hour = DateTime.now().hour;
+    final greeting = hour < 12
+        ? 'Good morning'
+        : hour < 18
+            ? 'Good afternoon'
+            : 'Good evening';
+    final cards = [
+      (Icons.live_tv_rounded, 'Live TV', '${formatCount(s.liveCount)} channels', 1),
+      (Icons.movie_outlined, 'Movies', '${formatCount(s.movieCount)} titles', 3),
+      (Icons.video_library_outlined, 'Series', '${formatCount(s.seriesCount)} shows', 4),
+      (Icons.calendar_view_week_rounded, 'TV Guide', "What's on now", 2),
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Breakpoints.gutter, 12, Breakpoints.gutter, 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Image.asset('assets/brand/mark.png', width: 34, height: 34, filterQuality: FilterQuality.medium),
+          const SizedBox(width: 10),
+          const Text('CAT',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+          const Spacer(),
+          RoundIconButton(
+              size: 42, icon: Icons.search_rounded, tooltip: 'Search', onPressed: () => onNavigate(5)),
+          const SizedBox(width: 8),
+          RoundIconButton(
+              size: 42, icon: Icons.settings_outlined, tooltip: 'Settings', onPressed: () => onNavigate(7)),
+        ]).animate().fadeIn(duration: 400.ms),
+        const SizedBox(height: 18),
+        Text('$greeting · ${hhmm(DateTime.now())}',
+            style: const TextStyle(color: AppColors.textDim, fontSize: 14, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 4),
+        Text('What are we watching ${hour >= 18 ? 'tonight' : 'today'}?',
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, letterSpacing: -0.4, height: 1.2)),
+        if (s.expiresAt != null && s.expiresAt!.difference(DateTime.now()).inDays < 14) ...[
+          const SizedBox(height: 6),
+          _Expiry(expiresAt: s.expiresAt!),
+        ],
+        const SizedBox(height: 14),
+        const Align(alignment: Alignment.centerLeft, child: SourcePicker(maxWidth: 320)),
+        const SizedBox(height: 16),
+        LayoutBuilder(builder: (context, c) {
+          final columns = c.maxWidth >= 560 ? 4 : 2;
+          const gap = 12.0;
+          final w = (c.maxWidth - gap * (columns - 1)) / columns;
+          return Wrap(spacing: gap, runSpacing: gap, children: [
+            for (final (i, (icon, title, sub, target)) in cards.indexed)
+              SizedBox(
+                width: w,
+                height: 116,
+                child: GlassTile(
+                  radius: AppRadii.card,
+                  onTap: () => onNavigate(target),
+                  padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Icon(icon, size: 30, color: AppColors.accentBright),
+                    const Spacer(),
+                    Text(title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.3)),
+                    Text(sub,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: AppColors.textSoft, fontSize: 13)),
+                  ]),
+                ),
+              )
+                  .animate(delay: (120 + i * 60).ms)
+                  .fadeIn(duration: 400.ms)
+                  .slideY(begin: 0.15, curve: Curves.easeOutCubic),
+          ]);
+        }),
+      ]),
+    );
   }
 }
 

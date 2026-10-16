@@ -95,6 +95,99 @@ class _MovieDetailsState extends ConsumerState<MovieDetails> {
     final year = xtStr(info?['releasedate'])?.split('-').first ?? item.year;
     final poster = xtStr(info?['movie_image']) ?? item.logo;
     final t = Theme.of(context).textTheme;
+    final actions = [
+      FilledButton.icon(
+        onPressed: _play,
+        icon: const Icon(Icons.play_arrow),
+        label: Text(_resume != null ? 'Resume ${formatDuration(_resume!)}' : 'Play'),
+      ),
+      if (_resume != null)
+        OutlinedButton.icon(
+          onPressed: () => _play(fromStart: true),
+          icon: const Icon(Icons.replay),
+          label: const Text('From start'),
+        ),
+    ];
+    final extras = [
+      if (isDownloadable(item.url))
+        DownloadButton(
+          sourceId: item.sourceId,
+          itemKey: item.key,
+          onDownload: () => ref.read(downloadsProvider.notifier).addItem(item),
+        ),
+      IconButton.outlined(
+        tooltip: _fav ? 'Remove from favorites' : 'Add to favorites',
+        icon: Icon(_fav ? Icons.star : Icons.star_border, color: _fav ? AppColors.star : null),
+        onPressed: () async {
+          final v = await ref.read(repositoryProvider).toggleFavorite(item);
+          setState(() => _fav = v);
+        },
+      ),
+    ];
+    final meta = Wrap(spacing: 12, runSpacing: 4, children: [
+      if (year != null) Text(year, style: const TextStyle(color: AppColors.textDim)),
+      if (duration != null) Text(duration, style: const TextStyle(color: AppColors.textDim)),
+      if (item.rating != null && item.rating! > 0)
+        Text('★ ${item.rating!.toStringAsFixed(1)}', style: const TextStyle(color: AppColors.star)),
+      if (genre != null) Text(genre, style: const TextStyle(color: AppColors.textDim)),
+    ]);
+    final about = [
+      if (plot != null) Text(plot, style: t.bodyMedium),
+      if (director != null) ...[
+        const SizedBox(height: 12),
+        Text('Director: $director', style: const TextStyle(color: AppColors.textDim)),
+      ],
+      if (cast != null) ...[
+        const SizedBox(height: 6),
+        Text('Cast: $cast', style: const TextStyle(color: AppColors.textDim)),
+      ],
+      if (info == null && item.extId != null)
+        const Padding(
+          padding: EdgeInsets.only(top: 8),
+          child: LinearProgressIndicator(minHeight: 2),
+        ),
+    ];
+
+    if (context.isCompact) {
+      // Phones: a full-screen page with the poster beside the title.
+      return Dialog.fullscreen(
+        backgroundColor: AppColors.bg,
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: AppBar(leading: const CloseButton()),
+          body: SafeArea(
+            top: false,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(Breakpoints.gutter, 0, Breakpoints.gutter, 24),
+              children: [
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  NetLogo(url: poster, name: item.name, width: 116, height: 174,
+                      radius: AppRadii.tile, fit: BoxFit.cover),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(item.name, style: t.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 8),
+                      meta,
+                    ]),
+                  ),
+                ]),
+                const SizedBox(height: 18),
+                for (final a in actions) ...[
+                  SizedBox(height: 46, child: a),
+                  const SizedBox(height: 8),
+                ],
+                Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                  for (final e in extras) ...[const SizedBox(width: 8), e],
+                ]),
+                const SizedBox(height: 12),
+                ...about,
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return Dialog(
       clipBehavior: Clip.antiAlias,
@@ -122,71 +215,18 @@ class _MovieDetailsState extends ConsumerState<MovieDetails> {
                       ),
                     ]),
                     const SizedBox(height: 6),
-                    Wrap(spacing: 12, children: [
-                      if (year != null) Text(year, style: const TextStyle(color: AppColors.textDim)),
-                      if (duration != null) Text(duration, style: const TextStyle(color: AppColors.textDim)),
-                      if (item.rating != null && item.rating! > 0)
-                        Text('★ ${item.rating!.toStringAsFixed(1)}',
-                            style: const TextStyle(color: AppColors.star)),
-                      if (genre != null) Text(genre, style: const TextStyle(color: AppColors.textDim)),
-                    ]),
+                    meta,
                     const SizedBox(height: 16),
                     Expanded(
                       child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (plot != null) Text(plot, style: t.bodyMedium),
-                            if (director != null) ...[
-                              const SizedBox(height: 12),
-                              Text('Director: $director', style: const TextStyle(color: AppColors.textDim)),
-                            ],
-                            if (cast != null) ...[
-                              const SizedBox(height: 6),
-                              Text('Cast: $cast', style: const TextStyle(color: AppColors.textDim)),
-                            ],
-                            if (info == null && item.extId != null)
-                              const Padding(
-                                padding: EdgeInsets.only(top: 8),
-                                child: LinearProgressIndicator(minHeight: 2),
-                              ),
-                          ],
-                        ),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: about),
                       ),
                     ),
                     const SizedBox(height: 16),
                     Row(children: [
-                      FilledButton.icon(
-                        onPressed: _play,
-                        icon: const Icon(Icons.play_arrow),
-                        label: Text(_resume != null ? 'Resume ${formatDuration(_resume!)}' : 'Play'),
-                      ),
-                      if (_resume != null) ...[
-                        const SizedBox(width: 8),
-                        OutlinedButton.icon(
-                          onPressed: () => _play(fromStart: true),
-                          icon: const Icon(Icons.replay),
-                          label: const Text('From start'),
-                        ),
-                      ],
+                      for (final (i, a) in actions.indexed) ...[if (i > 0) const SizedBox(width: 8), a],
                       const Spacer(),
-                      if (isDownloadable(item.url)) ...[
-                        DownloadButton(
-                          sourceId: item.sourceId,
-                          itemKey: item.key,
-                          onDownload: () => ref.read(downloadsProvider.notifier).addItem(item),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      IconButton.outlined(
-                        tooltip: _fav ? 'Remove from favorites' : 'Add to favorites',
-                        icon: Icon(_fav ? Icons.star : Icons.star_border,
-                            color: _fav ? AppColors.star : null),
-                        onPressed: () async {
-                          final v = await ref.read(repositoryProvider).toggleFavorite(item);
-                          setState(() => _fav = v);
-                        },
-                      ),
+                      for (final (i, e) in extras.indexed) ...[if (i > 0) const SizedBox(width: 8), e],
                     ]),
                   ],
                 ),
@@ -290,6 +330,32 @@ class _SeriesPageState extends ConsumerState<SeriesPage> {
         ? const <int>[]
         : (info.episodes.map((e) => e.season).toSet().toList()..sort());
     final episodes = info?.episodes.where((e) => e.season == _season).toList() ?? const [];
+    final compact = context.isCompact;
+
+    Widget episodeTile(Episode e) => _EpisodeTile(
+          episode: e,
+          compact: compact,
+          progress: _progress['ep:${e.id}'],
+          fallbackImage: info?.cover ?? item.logo,
+          onTap: () => _play(e),
+          trailing: isDownloadable(e.url)
+              ? DownloadButton(
+                  sourceId: item.sourceId,
+                  itemKey: 'ep:${e.id}',
+                  outlined: false,
+                  onDownload: () =>
+                      ref.read(downloadsProvider.notifier).addEpisode(item, e, cover: info?.cover),
+                )
+              : null,
+        );
+    final seasonChips = [
+      for (final s in seasons)
+        ChoiceChip(
+          label: Text('Season $s'),
+          selected: s == _season,
+          onSelected: (_) => setState(() => _season = s),
+        ),
+    ];
 
     return AppBackdrop(
       child: Scaffold(
@@ -298,11 +364,17 @@ class _SeriesPageState extends ConsumerState<SeriesPage> {
           title: Text(item.name),
           actions: [
             if (episodes.any((e) => isDownloadable(e.url)))
-              TextButton.icon(
-                onPressed: () => _downloadAll(episodes),
-                icon: const Icon(Icons.download_rounded),
-                label: Text(seasons.length > 1 ? 'Download season $_season' : 'Download all'),
-              ),
+              compact
+                  ? IconButton(
+                      tooltip: seasons.length > 1 ? 'Download season $_season' : 'Download all',
+                      onPressed: () => _downloadAll(episodes),
+                      icon: const Icon(Icons.download_rounded),
+                    )
+                  : TextButton.icon(
+                      onPressed: () => _downloadAll(episodes),
+                      icon: const Icon(Icons.download_rounded),
+                      label: Text(seasons.length > 1 ? 'Download season $_season' : 'Download all'),
+                    ),
             const SizedBox(width: 4),
             IconButton(
               tooltip: _fav ? 'Remove from favorites' : 'Add to favorites',
@@ -325,7 +397,9 @@ class _SeriesPageState extends ConsumerState<SeriesPage> {
               )
             : info == null
                 ? const Center(child: CircularProgressIndicator())
-                : Row(
+                : compact
+                    ? _compactBody(info, seasonChips, episodes, episodeTile)
+                    : Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       SizedBox(
@@ -370,18 +444,7 @@ class _SeriesPageState extends ConsumerState<SeriesPage> {
                             if (seasons.length > 1)
                               Padding(
                                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                                child: Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: [
-                                    for (final s in seasons)
-                                      ChoiceChip(
-                                        label: Text('Season $s'),
-                                        selected: s == _season,
-                                        onSelected: (_) => setState(() => _season = s),
-                                      ),
-                                  ],
-                                ),
+                                child: Wrap(spacing: 8, runSpacing: 8, children: seasonChips),
                               ),
                             Expanded(
                               child: episodes.isEmpty
@@ -390,22 +453,7 @@ class _SeriesPageState extends ConsumerState<SeriesPage> {
                                       padding: const EdgeInsets.all(16),
                                       itemCount: episodes.length,
                                       separatorBuilder: (_, _) => const SizedBox(height: 8),
-                                      itemBuilder: (_, i) => _EpisodeTile(
-                                        episode: episodes[i],
-                                        progress: _progress['ep:${episodes[i].id}'],
-                                        fallbackImage: info.cover ?? item.logo,
-                                        onTap: () => _play(episodes[i]),
-                                        trailing: isDownloadable(episodes[i].url)
-                                            ? DownloadButton(
-                                                sourceId: item.sourceId,
-                                                itemKey: 'ep:${episodes[i].id}',
-                                                outlined: false,
-                                                onDownload: () => ref
-                                                    .read(downloadsProvider.notifier)
-                                                    .addEpisode(item, episodes[i], cover: info.cover),
-                                              )
-                                            : null,
-                                      ),
+                                      itemBuilder: (_, i) => episodeTile(episodes[i]),
                                     ),
                             ),
                           ],
@@ -414,6 +462,70 @@ class _SeriesPageState extends ConsumerState<SeriesPage> {
                     ],
                   ),
       ),
+    );
+  }
+
+  /// Phones: one scrolling column — cover and facts, seasons, episodes.
+  Widget _compactBody(SeriesInfo info, List<Widget> seasonChips, List<Episode> episodes,
+      Widget Function(Episode) episodeTile) {
+    final item = widget.item;
+    return SafeArea(
+      top: false,
+      child: CustomScrollView(slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(Breakpoints.gutter, 4, Breakpoints.gutter, 8),
+          sliver: SliverList.list(children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              NetLogo(url: info.cover ?? item.logo, name: item.name, width: 104, height: 156,
+                  radius: AppRadii.tile, fit: BoxFit.cover),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(item.name,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 6),
+                  if (info.genre != null) Text(info.genre!, style: const TextStyle(color: AppColors.textDim)),
+                  if (info.releaseDate != null)
+                    Text(info.releaseDate!, style: const TextStyle(color: AppColors.textDim)),
+                ]),
+              ),
+            ]),
+            if (info.plot != null) ...[
+              const SizedBox(height: 14),
+              Text(info.plot!, style: Theme.of(context).textTheme.bodyMedium),
+            ],
+            if (info.cast != null) ...[
+              const SizedBox(height: 8),
+              Text('Cast: ${info.cast}',
+                  maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.textDim)),
+            ],
+          ]),
+        ),
+        if (seasonChips.length > 1)
+          SliverToBoxAdapter(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(Breakpoints.gutter, 8, Breakpoints.gutter, 4),
+              child: Row(children: [
+                for (final c in seasonChips) Padding(padding: const EdgeInsets.only(right: 8), child: c),
+              ]),
+            ),
+          ),
+        if (episodes.isEmpty)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: EmptyState(icon: Icons.video_library_outlined, title: 'No episodes'),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+            sliver: SliverList.separated(
+              itemCount: episodes.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (_, i) => episodeTile(episodes[i]),
+            ),
+          ),
+      ]),
     );
   }
 }
@@ -425,8 +537,10 @@ class _EpisodeTile extends StatelessWidget {
     this.progress,
     this.fallbackImage,
     this.trailing,
+    this.compact = false,
   });
 
+  final bool compact;
   final Episode episode;
   final VoidCallback onTap;
   final double? progress;
@@ -447,8 +561,8 @@ class _EpisodeTile extends StatelessWidget {
                   NetLogo(
                     url: episode.image ?? fallbackImage,
                     name: episode.title,
-                    width: 160,
-                    height: 90,
+                    width: compact ? 112 : 160,
+                    height: compact ? 63 : 90,
                     fit: BoxFit.cover,
                   ),
                   if (progress != null && progress! > 0)
@@ -459,14 +573,14 @@ class _EpisodeTile extends StatelessWidget {
                       child: LinearProgressIndicator(value: progress, minHeight: 3),
                     ),
                 ]),
-                const SizedBox(width: 14),
+                SizedBox(width: compact ? 10 : 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text('${episode.number}. ${episode.title}',
                           style: const TextStyle(fontWeight: FontWeight.w600),
-                          maxLines: 1,
+                          maxLines: compact ? 2 : 1,
                           overflow: TextOverflow.ellipsis),
                       if (episode.duration != null)
                         Text(episode.duration!,
@@ -474,7 +588,7 @@ class _EpisodeTile extends StatelessWidget {
                       if (episode.plot != null) ...[
                         const SizedBox(height: 4),
                         Text(episode.plot!,
-                            maxLines: 3,
+                            maxLines: compact ? 2 : 3,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(color: AppColors.textDim, fontSize: 13)),
                       ],
@@ -482,8 +596,10 @@ class _EpisodeTile extends StatelessWidget {
                   ),
                 ),
                 ?trailing,
-                const SizedBox(width: 4),
-                const Icon(Icons.play_circle_outline, size: 32),
+                if (!compact) ...[
+                  const SizedBox(width: 4),
+                  const Icon(Icons.play_circle_outline, size: 32),
+                ],
               ],
             ),
           ),

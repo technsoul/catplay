@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,16 +21,17 @@ class SourcesPage extends ConsumerWidget {
     final sources = ref.watch(sourcesProvider).value ?? const [];
     final imports = ref.watch(importProvider);
     final active = ref.watch(activeSourceProvider);
+    final compact = context.isCompact;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 24, 24),
+      padding: compact ? const EdgeInsets.fromLTRB(12, 12, 12, 24) : const EdgeInsets.fromLTRB(16, 4, 24, 24),
       children: [
         PageHeader(
-          eyebrow: 'Xtream Codes logins and M3U playlists',
+          eyebrow: compact ? null : 'Xtream Codes logins and M3U playlists',
           title: 'Playlists',
           trailing: FilledButton.icon(
             onPressed: () => showSourceDialog(context),
             icon: const Icon(Icons.add),
-            label: const Text('Add playlist'),
+            label: Text(compact ? 'Add' : 'Add playlist'),
           ),
         ),
         const SizedBox(height: 8),
@@ -191,7 +194,7 @@ class _SourceCard extends ConsumerWidget {
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Delete playlist?'),
-        content: Text('“${source.name}” and its favorites, history and TV guide will be removed from this PC.'),
+        content: Text('“${source.name}” and its favorites, history and TV guide will be removed from this device.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
           FilledButton(
@@ -340,11 +343,19 @@ class _SourceDialogState extends ConsumerState<_SourceDialog> {
               children: [
                 if (!_editing) ...[
                   SegmentedButton<SourceType>(
-                    segments: const [
-                      ButtonSegment(value: SourceType.xtream, icon: Icon(Icons.dns_outlined), label: Text('Xtream Codes')),
-                      ButtonSegment(value: SourceType.m3uUrl, icon: Icon(Icons.link), label: Text('M3U URL')),
-                      ButtonSegment(value: SourceType.m3uFile, icon: Icon(Icons.folder_open), label: Text('M3U file')),
-                    ],
+                    // Phones: short labels, no icons, so all three fit.
+                    showSelectedIcon: !context.isCompact,
+                    segments: context.isCompact
+                        ? const [
+                            ButtonSegment(value: SourceType.xtream, label: Text('Xtream')),
+                            ButtonSegment(value: SourceType.m3uUrl, label: Text('M3U URL')),
+                            ButtonSegment(value: SourceType.m3uFile, label: Text('M3U file')),
+                          ]
+                        : const [
+                            ButtonSegment(value: SourceType.xtream, icon: Icon(Icons.dns_outlined), label: Text('Xtream Codes')),
+                            ButtonSegment(value: SourceType.m3uUrl, icon: Icon(Icons.link), label: Text('M3U URL')),
+                            ButtonSegment(value: SourceType.m3uFile, icon: Icon(Icons.folder_open), label: Text('M3U file')),
+                          ],
                     selected: {_type},
                     onSelectionChanged: (s) => setState(() => _type = s.first),
                   ),
@@ -375,7 +386,9 @@ class _SourceDialogState extends ConsumerState<_SourceDialog> {
                     obscureText: !_showPass,
                     decoration: InputDecoration(
                       labelText: 'Password',
-                      helperText: 'Stored in the Windows Credential Manager',
+                      helperText: Platform.isWindows
+                          ? 'Stored in the Windows Credential Manager'
+                          : 'Stored in the system keystore',
                       suffixIcon: IconButton(
                         icon: Icon(_showPass ? Icons.visibility_off : Icons.visibility),
                         onPressed: () => setState(() => _showPass = !_showPass),

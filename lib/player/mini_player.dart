@@ -59,7 +59,7 @@ class MiniMode {
       await windowManager.setAlwaysOnTop(false);
       await windowManager.setAspectRatio(0);
       await windowManager.setTitleBarStyle(TitleBarStyle.normal);
-      await windowManager.setMinimumSize(_appMinSize);
+      await windowManager.setMinimumSize(isPhonePreview ? const Size(320, 360) : _appMinSize);
       final b = _savedBounds;
       if (b != null) {
         await windowManager.setBounds(b);

@@ -16,10 +16,12 @@ import '../../ui/theme.dart';
 import '../../ui/widgets.dart';
 import '../live/live_page.dart' show showProgrammeDialog;
 
-const _pxPerMinute = 4.0;
 const _rowHeight = 56.0;
-const _channelWidth = 220.0;
 const _headerHeight = 36.0;
+
+/// Time scale and channel column: phones show less of both.
+double _pxPerMinuteFor(bool compact) => compact ? 3.0 : 4.0;
+double _channelWidthFor(bool compact) => compact ? 92.0 : 220.0;
 
 /// Electronic programme guide: channels down, time across.
 ///
@@ -46,6 +48,10 @@ class _GuidePageState extends ConsumerState<GuidePage> {
   final _requested = <String>{};
   Timer? _tick;
   double _viewport = 800;
+  bool _compact = false;
+
+  double get _pxPerMinute => _pxPerMinuteFor(_compact);
+  double get _channelWidth => _channelWidthFor(_compact);
 
   Repository get _repo => ref.read(repositoryProvider);
 
@@ -152,8 +158,86 @@ class _GuidePageState extends ConsumerState<GuidePage> {
 
   @override
   Widget build(BuildContext context) {
+    final compact = context.isCompact;
+    if (compact != _compact) {
+      // Keep the same time in view when the scale changes (rotation).
+      _offset.value = _offset.value / _pxPerMinute * _pxPerMinuteFor(compact);
+      _compact = compact;
+    }
     final today = _startOfDay(DateTime.now());
     final days = [for (var i = -1; i <= 6; i++) today.add(Duration(days: i))];
+    final dayChips = SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(children: [
+        for (final d in days)
+          Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: ChoiceChip(
+              label: Text(d == today
+                  ? 'Today'
+                  : d == today.subtract(const Duration(days: 1))
+                      ? 'Yesterday'
+                      : '${_weekday(d)} ${d.day}'),
+              selected: d == _day,
+              onSelected: (_) => _setDay(d),
+            ),
+          ),
+      ]),
+    );
+    final categories = DropdownButtonFormField<int?>(
+      initialValue: _favoritesOnly ? -1 : _categoryId,
+      isExpanded: true,
+      decoration: const InputDecoration(prefixIcon: Icon(Icons.category_outlined, size: 18)),
+      items: [
+        const DropdownMenuItem(value: null, child: Text('All channels')),
+        const DropdownMenuItem(value: -1, child: Text('Favorites')),
+        for (final c in _cats)
+          DropdownMenuItem(value: c.id, child: Text(c.name, overflow: TextOverflow.ellipsis)),
+      ],
+      onChanged: (v) {
+        setState(() {
+          _favoritesOnly = v == -1;
+          _categoryId = v == -1 ? null : v;
+        });
+        _rebuild();
+      },
+    );
+    final search = GlassSearchField(
+      hint: compact ? 'Search' : 'Search channels',
+      onChanged: (v) {
+        setState(() => _text = v);
+        _rebuild();
+      },
+    );
+
+    if (compact) {
+      return Column(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: Row(children: [
+            Expanded(child: categories),
+            const SizedBox(width: 8),
+            Expanded(child: search),
+          ]),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
+          child: Row(children: [
+            Expanded(child: dayChips),
+            const SizedBox(width: 6),
+            FilledButton.tonal(onPressed: _jumpToNow, child: const Text('Now')),
+          ]),
+        ),
+        Expanded(
+          child: GlassPanel(
+            radius: AppRadii.tile,
+            margin: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+            child: _grid(),
+          ),
+        ),
+      ]);
+    }
+
     return Column(
       children: [
         Padding(
@@ -161,64 +245,16 @@ class _GuidePageState extends ConsumerState<GuidePage> {
           child: PageHeader(
             eyebrow: "What's on",
             title: 'TV Guide',
-            trailing: SizedBox(
-              width: 300,
-              child: GlassSearchField(
-                hint: 'Search channels',
-                onChanged: (v) {
-                  setState(() => _text = v);
-                  _rebuild();
-                },
-              ),
-            ),
+            trailing: SizedBox(width: 300, child: search),
           ),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 24, 8),
           child: Row(
             children: [
-              SizedBox(
-                width: 240,
-                child: DropdownButtonFormField<int?>(
-                  initialValue: _favoritesOnly ? -1 : _categoryId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(prefixIcon: Icon(Icons.category_outlined, size: 18)),
-                  items: [
-                    const DropdownMenuItem(value: null, child: Text('All channels')),
-                    const DropdownMenuItem(value: -1, child: Text('Favorites')),
-                    for (final c in _cats)
-                      DropdownMenuItem(value: c.id, child: Text(c.name, overflow: TextOverflow.ellipsis)),
-                  ],
-                  onChanged: (v) {
-                    setState(() {
-                      _favoritesOnly = v == -1;
-                      _categoryId = v == -1 ? null : v;
-                    });
-                    _rebuild();
-                  },
-                ),
-              ),
+              SizedBox(width: 240, child: categories),
               const SizedBox(width: 12),
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(children: [
-                    for (final d in days)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: ChoiceChip(
-                          label: Text(d == today
-                              ? 'Today'
-                              : d == today.subtract(const Duration(days: 1))
-                                  ? 'Yesterday'
-                                  : '${_weekday(d)} ${d.day}'),
-                          selected: d == _day,
-                          onSelected: (_) => _setDay(d),
-                        ),
-                      ),
-                  ]),
-                ),
-              ),
+              Expanded(child: dayChips),
               IconButton(
                 tooltip: 'Earlier',
                 icon: const Icon(Icons.chevron_left),
@@ -285,11 +321,12 @@ class _GuidePageState extends ConsumerState<GuidePage> {
               SizedBox(
                 height: _headerHeight,
                 child: Row(children: [
-                  const SizedBox(width: _channelWidth),
+                  SizedBox(width: _channelWidth),
                   Expanded(
                     child: ValueListenableBuilder(
                       valueListenable: _offset,
-                      builder: (_, off, _) => _TimeHeader(day: _day, offset: off),
+                      builder: (_, off, _) =>
+                          _TimeHeader(day: _day, offset: off, pxPerMinute: _pxPerMinute),
                     ),
                   ),
                 ]),
@@ -312,6 +349,7 @@ class _GuidePageState extends ConsumerState<GuidePage> {
                             programmes: ch.epgId == null ? const [] : (_programmes[ch.epgId] ?? const []),
                             day: _day,
                             offset: _offset,
+                            compact: _compact,
                             onTapChannel: () async {
                               final pl = await playableFor(_repo, ch);
                               if (pl == null) return;
@@ -352,9 +390,10 @@ class _GuidePageState extends ConsumerState<GuidePage> {
 }
 
 class _TimeHeader extends StatelessWidget {
-  const _TimeHeader({required this.day, required this.offset});
+  const _TimeHeader({required this.day, required this.offset, required this.pxPerMinute});
   final DateTime day;
   final double offset;
+  final double pxPerMinute;
 
   @override
   Widget build(BuildContext context) {
@@ -362,13 +401,13 @@ class _TimeHeader extends StatelessWidget {
     return ClipRect(
       child: Stack(children: [
         for (var m = 0; m < 24 * 60; m += slot)
-          if (m * _pxPerMinute - offset > -200 && m * _pxPerMinute - offset < 4000)
+          if (m * pxPerMinute - offset > -200 && m * pxPerMinute - offset < 4000)
             Positioned(
-              left: m * _pxPerMinute - offset,
+              left: m * pxPerMinute - offset,
               top: 0,
               bottom: 0,
               child: Container(
-                width: slot * _pxPerMinute,
+                width: slot * pxPerMinute,
                 padding: const EdgeInsets.only(left: 6),
                 alignment: Alignment.centerLeft,
                 decoration: const BoxDecoration(
@@ -389,9 +428,13 @@ class _GuideRow extends StatelessWidget {
     required this.programmes,
     required this.day,
     required this.offset,
+    required this.compact,
     required this.onTapChannel,
     required this.onTapProgramme,
   });
+
+  final bool compact;
+  double get _pxPerMinute => _pxPerMinuteFor(compact);
 
   final MediaItem channel;
   final List<Programme> programmes;
@@ -409,10 +452,22 @@ class _GuideRow extends StatelessWidget {
       child: Row(
         children: [
           SizedBox(
-            width: _channelWidth,
+            width: _channelWidthFor(compact),
             child: InkWell(
               onTap: onTapChannel,
-              child: Padding(
+              child: compact
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        NetLogo(url: channel.logo, name: channel.name, width: 44, height: 28, radius: 6),
+                        const SizedBox(height: 2),
+                        Text(channel.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 10, color: AppColors.textSoft)),
+                      ]),
+                    )
+                  : Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 child: Row(children: [
                   NetLogo(url: channel.logo, name: channel.name, width: 44, height: 34),

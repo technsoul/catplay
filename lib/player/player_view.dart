@@ -42,6 +42,7 @@ class _PlayerViewState extends ConsumerState<PlayerView> {
   final _focus = FocusNode(debugLabel: 'player');
   String? _toast;
   Timer? _toastTimer;
+  Offset? _doubleTapAt;
 
   AppPlayer get _p => ref.read(appPlayerProvider);
 
@@ -95,6 +96,23 @@ class _PlayerViewState extends ConsumerState<PlayerView> {
   Future<void> _zap(int delta) async {
     final ok = await _p.zap(delta);
     if (!ok && mounted) _flash('No more channels');
+  }
+
+  void _seekBy(int seconds) {
+    final t = _p.player.state.position + Duration(seconds: seconds);
+    _p.player.seek(t < Duration.zero ? Duration.zero : t);
+    _flash(seconds > 0 ? '+$seconds s' : '−${-seconds} s');
+  }
+
+  /// Phones: double-tap the left or right side of the video to seek.
+  void _onDoubleTap(double width) {
+    final live = _p.state.value.playable?.isLive ?? true;
+    final x = _doubleTapAt?.dx;
+    if (isTouch && !widget.compact && !live && x != null) {
+      if (x < width / 3) return _seekBy(-10);
+      if (x > width * 2 / 3) return _seekBy(10);
+    }
+    _toggleFullscreen();
   }
 
   Future<void> _volume(double delta) async {
@@ -170,19 +188,26 @@ class _PlayerViewState extends ConsumerState<PlayerView> {
       child: MouseRegion(
         onHover: (_) => _bump(),
         cursor: _controlsVisible ? SystemMouseCursors.basic : SystemMouseCursors.none,
-        child: GestureDetector(
+        child: LayoutBuilder(
+          builder: (context, box) => GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () {
             _focus.requestFocus();
-            // While controls are hidden the first click only reveals them, so
-            // aiming for a button never pauses the video by accident.
-            if (widget.compact || !_controlsVisible) {
+            if (isTouch && _controlsVisible) {
+              // Touch: a tap shows or hides the controls; play/pause has
+              // its own button.
+              _hideTimer?.cancel();
+              setState(() => _controlsVisible = false);
+            } else if (widget.compact || !_controlsVisible) {
+              // While controls are hidden the first click only reveals them, so
+              // aiming for a button never pauses the video by accident.
               _bump();
             } else {
               p.player.playOrPause();
             }
           },
-          onDoubleTap: _toggleFullscreen,
+          onDoubleTapDown: (d) => _doubleTapAt = d.localPosition,
+          onDoubleTap: () => _onDoubleTap(box.maxWidth),
           child: ColoredBox(
             color: Colors.black,
             child: Stack(
@@ -221,12 +246,14 @@ class _PlayerViewState extends ConsumerState<PlayerView> {
                       onFullscreen: _toggleFullscreen,
                       onBack: widget.onBack,
                       onZap: _zap,
+                      onSeek: _seekBy,
                     ),
                   ),
                 ),
               ],
             ),
           ),
+        ),
         ),
       ),
     );
@@ -310,9 +337,11 @@ class _Controls extends ConsumerWidget {
     required this.onFit,
     required this.onFullscreen,
     required this.onZap,
+    required this.onSeek,
     this.onBack,
   });
 
+  final ValueChanged<int> onSeek;
   final bool compact;
   final BoxFit fit;
   final ValueChanged<BoxFit> onFit;
@@ -329,7 +358,7 @@ class _Controls extends ConsumerWidget {
       builder: (context, s, _) {
         final p = s.playable;
         final live = p?.isLive ?? true;
-        return Column(
+        final controls = Column(
           children: [
             if (!compact)
               _Gradient(
@@ -363,7 +392,11 @@ class _Controls extends ConsumerWidget {
                   ),
                 ]),
               ),
-            const Spacer(),
+            Expanded(
+              child: isTouch && !compact
+                  ? _TouchCenter(player: player, live: live, canZap: ap.canZap, onSeek: onSeek, onZap: onZap)
+                  : const SizedBox.shrink(),
+            ),
             _Gradient(
               top: false,
               child: Column(
@@ -372,6 +405,8 @@ class _Controls extends ConsumerWidget {
                   if (!live) _SeekBar(player: player),
                   Row(
                     children: [
+                      // Touch full screen has these as big centre buttons.
+                      if (!isTouch || compact)
                       StreamBuilder<bool>(
                         stream: player.stream.playing,
                         initialData: player.state.playing,
@@ -381,7 +416,7 @@ class _Controls extends ConsumerWidget {
                           onPressed: player.playOrPause,
                         ),
                       ),
-                      if (live && ap.canZap) ...[
+                      if (live && ap.canZap && (!isTouch || compact)) ...[
                         IconButton(
                           tooltip: 'Previous channel (Page Up)',
                           icon: const Icon(Icons.skip_previous),
@@ -406,7 +441,8 @@ class _Controls extends ConsumerWidget {
                         ),
                       ] else
                         const Spacer(),
-                      _VolumeControl(player: player, compact: compact),
+                      // Phones have volume keys; the slider only takes room.
+                      if (!isMobile) _VolumeControl(player: player, compact: compact),
                       if (!compact) ...[
                         _TracksButton(player: player),
                         PopupMenuButton<BoxFit>(
@@ -442,9 +478,69 @@ class _Controls extends ConsumerWidget {
             ),
           ],
         );
+        // Full screen on a phone: keep buttons clear of notches and the
+        // gesture bar.
+        return compact ? controls : SafeArea(child: controls);
       },
     );
   }
+}
+
+/// Big centre buttons for touch: play/pause between seek (movies) or
+/// channel (live) buttons.
+class _TouchCenter extends StatelessWidget {
+  const _TouchCenter({
+    required this.player,
+    required this.live,
+    required this.canZap,
+    required this.onSeek,
+    required this.onZap,
+  });
+
+  final Player player;
+  final bool live;
+  final bool canZap;
+  final ValueChanged<int> onSeek;
+  final ValueChanged<int> onZap;
+
+  Widget _button(IconData icon, String tip, VoidCallback onTap, {double size = 36}) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        child: Material(
+          color: Colors.black38,
+          shape: const CircleBorder(),
+          child: IconButton(
+            tooltip: tip,
+            iconSize: size,
+            padding: EdgeInsets.all(size * 0.3),
+            icon: Icon(icon, color: Colors.white),
+            onPressed: onTap,
+          ),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (!live)
+            _button(Icons.replay_10_rounded, 'Back 10 s', () => onSeek(-10))
+          else if (canZap)
+            _button(Icons.skip_previous_rounded, 'Previous channel', () => onZap(-1)),
+          StreamBuilder<bool>(
+            stream: player.stream.playing,
+            initialData: player.state.playing,
+            builder: (_, snap) => _button(
+              snap.data == true ? Icons.pause_rounded : Icons.play_arrow_rounded,
+              'Play/Pause',
+              player.playOrPause,
+              size: 48,
+            ),
+          ),
+          if (!live)
+            _button(Icons.forward_10_rounded, 'Forward 10 s', () => onSeek(10))
+          else if (canZap)
+            _button(Icons.skip_next_rounded, 'Next channel', () => onZap(1)),
+        ]),
+      );
 }
 
 class _Gradient extends StatelessWidget {
@@ -700,10 +796,20 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   void initState() {
     super.initState();
     _player = ref.read(appPlayerProvider);
+    if (isMobile) {
+      // Phones watch sideways with the system bars hidden.
+      SystemChrome.setPreferredOrientations(
+          [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    }
   }
 
   @override
   void dispose() {
+    if (isMobile) {
+      SystemChrome.setPreferredOrientations(const []);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
     if (isDesktop) {
       windowManager.isFullScreen().then((fs) {
         if (fs) windowManager.setFullScreen(false);

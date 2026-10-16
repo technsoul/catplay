@@ -234,7 +234,12 @@ class _LockScreenState extends ConsumerState<_LockScreen> {
           child: GestureDetector(
             onTap: _focus.requestFocus,
             behavior: HitTestBehavior.opaque,
-            child: Center(
+            child: SafeArea(
+              child: Center(
+              child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Padding(
+              padding: const EdgeInsets.all(16),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Image.asset('assets/brand/mark.png', width: 64, height: 64, filterQuality: FilterQuality.medium),
                 const SizedBox(height: 20),
@@ -261,6 +266,9 @@ class _LockScreenState extends ConsumerState<_LockScreen> {
                 ),
                 _Keypad(onDigit: _digit, onBackspace: _backspace, onSubmit: _submit),
               ].animate(interval: 50.ms).fadeIn(duration: 400.ms).slideY(begin: 0.1)),
+              ),
+              ),
+              ),
             ),
           ),
         ),

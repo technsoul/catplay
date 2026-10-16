@@ -1,6 +1,6 @@
 # CAT
 
-CAT is a fast IPTV player for Windows, Linux, macOS and Android TV, built with Flutter and libmpv.
+CAT is a fast IPTV player for Windows, Linux, macOS, Android TV and Android phones, built with Flutter and libmpv.
 
 - **Sources:** Xtream Codes API, M3U/M3U8 (URL or local file), XMLTV guides (`.xml` / `.xml.gz`)
 - **Live TV:** categories, channel list with now/next, preview player, channel zapping, auto-reconnect
@@ -31,14 +31,16 @@ To create an installer package:
 dart run msix:create
 ```
 
-### Android TV
+### Android TV and phones
 
 ```bash
-flutter build apk --release --split-per-abi
+flutter build apk --release --split-per-abi --dart-define=FORM_FACTOR=tv
+flutter build apk --release --split-per-abi --dart-define=FORM_FACTOR=mobile
 ```
 
-Install `app-armeabi-v7a-release.apk` (most TV boxes and sticks) or `app-arm64-v8a-release.apk`
-with `adb install` or a file manager on the TV. Release builds are signed with `android/key.properties`
+`FORM_FACTOR=tv` (the default) is laid out for a remote on a TV; `mobile` is the touch version for
+phones and tablets (landscape, full screen). Install the `armeabi-v7a` APK on most TV boxes and sticks,
+or `arm64-v8a` on phones and newer devices. Release builds are signed with `android/key.properties`
 (or the `CAT_KEYSTORE_*` environment variables in CI) and fall back to the debug key without one.
 
 ## Architecture

@@ -1,7 +1,7 @@
 name: iptv_player
-description: "CAT — fast IPTV player for desktop and Android TV: Xtream Codes, M3U, XMLTV guide, movies & series."
+description: "CAT — fast IPTV player for desktop, Android TV and Android phones: Xtream Codes, M3U, XMLTV guide, movies & series."
 publish_to: 'none'
-version: 0.2.0+5
+version: 0.2.1+6
 
 environment:
   sdk: ^3.12.2

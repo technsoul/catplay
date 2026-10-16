@@ -68,16 +68,23 @@ jobs:
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
             echo "CAT_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
           fi
-      - run: flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64,android-x64
+      # Same app, two UI modes: TV (remote, 720p layout) and mobile (touch,
+      # immersive landscape), picked at build time via FORM_FACTOR.
+      - name: Build TV and mobile APKs
         env:
           CAT_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           CAT_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           CAT_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-      - run: |
+        run: |
           VERSION=$(grep '^version:' pubspec.yaml | sed -E 's/version: *([^+]*).*/\1/')
           mkdir -p dist
-          for abi in armeabi-v7a arm64-v8a x86_64; do
-            cp "build/app/outputs/flutter-apk/app-$abi-release.apk" "dist/catplay-v$VERSION-android-tv-$abi.apk"
+          for form in tv mobile; do
+            flutter build apk --release --split-per-abi \
+              --target-platform android-arm,android-arm64,android-x64 \
+              --dart-define=FORM_FACTOR=$form
+            for abi in armeabi-v7a arm64-v8a x86_64; do
+              cp "build/app/outputs/flutter-apk/app-$abi-release.apk" "dist/catplay-v$VERSION-android-$form-$abi.apk"
+            done
           done
       - uses: actions/upload-artifact@v4
         with:

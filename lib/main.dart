@@ -55,6 +55,12 @@ Future<void> main() async {
   };
 
   MediaKit.ensureInitialized();
+  if (isMobile) {
+    // Phones: landscape, edge to edge, system bars hidden until swiped in.
+    await SystemChrome.setPreferredOrientations(
+        [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
   if (isDesktop) {
     await windowManager.ensureInitialized();
     await windowManager.waitUntilReadyToShow(
@@ -115,19 +121,24 @@ class IptvApp extends StatelessWidget {
 }
 
 /// The UI is laid out for a desktop window (at least 1100 logical px wide).
-/// TVs report about 960x540, so draw on a 1280-wide canvas scaled to fit.
+/// TVs report about 960x540 and phones about 900x400 in landscape, so the UI
+/// is drawn on a larger canvas and scaled down to fit.
 class _TvScale extends StatelessWidget {
   const _TvScale({required this.child});
   final Widget child;
-  static const _width = 1280.0;
 
   @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
     final size = mq.size;
-    if (isDesktop || size.width >= _width || size.width == 0) return child;
-    final scale = size.width / _width;
-    final virtual = Size(_width, size.height / scale);
+    if (isDesktop || size.isEmpty) return child;
+    // Phones keep the UI as large as possible; TVs are viewed from afar at
+    // a 720p-like layout.
+    final min = isMobile ? const Size(1100, 600) : const Size(1280, 720);
+    final scale = [size.width / min.width, size.height / min.height, 1.0]
+        .reduce((a, b) => a < b ? a : b);
+    if (scale >= 1) return child;
+    final virtual = size / scale;
     return ColoredBox(
       color: AppColors.bg,
       child: FittedBox(

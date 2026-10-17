@@ -67,6 +67,7 @@ Future<void> main() async {
       systemNavigationBarColor: Colors.transparent,
       systemNavigationBarIconBrightness: Brightness.light,
     ));
+    await MiniMode.init();
   } else if (isTv) {
     await SystemChrome.setPreferredOrientations(
         [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);

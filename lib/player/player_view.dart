@@ -457,7 +457,7 @@ class _Controls extends ConsumerWidget {
                           ],
                         ),
                       ],
-                      if (isDesktop)
+                      if (isDesktop || (isMobile && !compact && MiniMode.pipSupported))
                         IconButton(
                           tooltip: compact
                               ? 'Mini player (always on top)'
@@ -797,6 +797,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     super.initState();
     _player = ref.read(appPlayerProvider);
     if (isMobile) {
+      MiniMode.arm(_player);
       // Phones watch sideways with the system bars hidden.
       SystemChrome.setPreferredOrientations(
           [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
@@ -807,6 +808,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   @override
   void dispose() {
     if (isMobile) {
+      MiniMode.disarm();
       SystemChrome.setPreferredOrientations(const []);
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     }

@@ -11,6 +11,8 @@ import 'app_player.dart';
 
 /// Picture-in-picture: shrinks the app window to a small, frameless,
 /// always-on-top video in the screen corner, and restores it afterwards.
+/// On phones it uses Android's picture-in-picture, a floating window on top
+/// of other apps (see MainActivity.kt).
 ///
 /// The app keeps its whole navigation state underneath (it is only hidden),
 /// so restoring returns exactly where the user was.
@@ -18,6 +20,13 @@ class MiniMode {
   MiniMode._();
 
   static final active = ValueNotifier(false);
+
+  static const _pip = MethodChannel('cat/pip');
+
+  /// Phones: whether the device offers picture-in-picture.
+  static bool pipSupported = false;
+  static AppPlayer? _pipPlayer;
+  static final _pipSubs = <StreamSubscription<Object?>>[];
 
   static const _size = Size(480, 270);
   static const _minSize = Size(256, 144);
@@ -27,7 +36,66 @@ class MiniMode {
   static bool _savedMaximized = false;
   static bool _busy = false;
 
+  /// Phones: checks for picture-in-picture support and listens for the
+  /// floating window's events.
+  static Future<void> init() async {
+    if (!isMobile) return;
+    try {
+      pipSupported = await _pip.invokeMethod<bool>('isSupported') ?? false;
+    } on PlatformException catch (_) {
+      pipSupported = false;
+    }
+    _pip.setMethodCallHandler((call) async {
+      final args = call.arguments;
+      switch (call.method) {
+        case 'changed' when args is Map:
+          active.value = args['active'] == true;
+          // Closing the floating window shouldn't keep playing out of sight.
+          if (args['dismissed'] == true) await _pipPlayer?.player.pause();
+        case 'togglePlay':
+          await _pipPlayer?.player.playOrPause();
+      }
+    });
+  }
+
+  static Map<String, Object?> _pipState(AppPlayer p) => {
+        'playing': p.player.state.playing,
+        'width': p.player.state.width,
+        'height': p.player.state.height,
+      };
+
+  /// Phones: while the player page is open, leaving the app (Home, Recents)
+  /// floats the video instead of hiding it.
+  static Future<void> arm(AppPlayer p) async {
+    if (!isMobile || !pipSupported) return;
+    await disarm();
+    _pipPlayer = p;
+    void update(Object? _) => _pip.invokeMethod('update', _pipState(p)).ignore();
+    _pipSubs
+      ..add(p.player.stream.playing.listen(update))
+      ..add(p.player.stream.width.listen(update))
+      ..add(p.player.stream.height.listen(update));
+    await _pip.invokeMethod('arm', {'armed': true, ..._pipState(p)});
+  }
+
+  static Future<void> disarm() async {
+    if (!isMobile || _pipPlayer == null) return;
+    for (final s in _pipSubs) {
+      await s.cancel();
+    }
+    _pipSubs.clear();
+    _pipPlayer = null;
+    await _pip.invokeMethod('arm', {'armed': false});
+  }
+
   static Future<void> enter() async {
+    if (isMobile) {
+      final p = _pipPlayer;
+      if (!pipSupported || p == null || active.value) return;
+      await _pip.invokeMethod('update', _pipState(p));
+      await _pip.invokeMethod<bool>('enter');
+      return;
+    }
     if (!isDesktop || active.value || _busy) return;
     _busy = true;
     try {
@@ -52,6 +120,7 @@ class MiniMode {
     }
   }
 
+  /// Phones leave picture-in-picture from the floating window itself.
   static Future<void> exit() async {
     if (!isDesktop || !active.value || _busy) return;
     _busy = true;
@@ -147,6 +216,26 @@ class _MiniPlayerState extends ConsumerState<_MiniPlayer> {
   Widget build(BuildContext context) {
     final ap = ref.watch(appPlayerProvider);
     final player = ap.player;
+    if (isMobile) {
+      // Android's floating window draws its own controls and doesn't pass
+      // touches through, so only the video and its status are shown.
+      return Material(
+        color: Colors.black,
+        child: Stack(fit: StackFit.expand, children: [
+          Video(controller: ap.video, controls: NoVideoControls, fill: Colors.black),
+          ValueListenableBuilder(
+            valueListenable: ap.state,
+            builder: (_, s, _) => switch (s.phase) {
+              PlayPhase.loading || PlayPhase.reconnecting => const Center(
+                  child: CircularProgressIndicator(strokeWidth: 2)),
+              PlayPhase.error => const Center(
+                  child: Icon(Icons.error_outline, color: Colors.white70)),
+              PlayPhase.idle || PlayPhase.playing => const SizedBox.shrink(),
+            },
+          ),
+        ]),
+      );
+    }
     return Material(
       color: Colors.black,
       child: Focus(

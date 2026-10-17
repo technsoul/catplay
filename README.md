@@ -10,6 +10,7 @@ CAT is a fast IPTV player for Windows, Linux, macOS, Android TV and Android phon
 - **Search:** instant full-text search across all playlists (SQLite FTS5, prefix matching)
 - **Favorites, continue watching, recent channels**, multiple playlists
 - **Playback:** libmpv via `media_kit` — HEVC, AC3/E-AC3, MPEG-TS, HLS, hardware decoding, audio/subtitle tracks
+- **Mini player:** an always-on-top mini window on desktop; on Android phones, picture-in-picture floats the video over other apps (PiP button, or just press Home while watching)
 
 ## Run / build
 

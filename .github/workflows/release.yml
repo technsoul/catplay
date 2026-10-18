@@ -4,6 +4,10 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to create (e.g. v1.2.3). Leave empty to only build.
+        required: false
 
 permissions:
   contents: write
@@ -117,7 +121,7 @@ jobs:
   # Windows + Linux publish as soon as they're built; macOS runners can queue
   # for a long time, so the mac build is appended to the same release later.
   release:
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || inputs.tag != ''
     needs: [windows, linux, android]
     runs-on: ubuntu-latest
     steps:
@@ -127,10 +131,12 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           files: dist/*
 
   release-macos:
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || inputs.tag != ''
     needs: [macos, release]
     runs-on: ubuntu-latest
     steps:
@@ -140,4 +146,6 @@ jobs:
           path: dist
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
           files: dist/*

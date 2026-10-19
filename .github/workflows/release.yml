@@ -13,15 +13,24 @@ permissions:
   contents: write
 
 jobs:
+  # The desktop apps (Windows, Linux, macOS) are the Rust app in desktop/.
   windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: subosito/flutter-action@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
         with:
-          flutter-version: 3.44.8
-          channel: stable
-          cache: true
+          workspaces: desktop
+      # libmpv-2.dll ships next to CAT.exe.
+      - name: Download libmpv
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download -R shinchiro/mpv-winbuild-cmake --pattern "mpv-dev-x86_64-2*.7z" -D mpv-dl
+          7z x (Get-ChildItem mpv-dl\*.7z | Select-Object -First 1).FullName -odesktop\mpv -y | Out-Null
+          Get-ChildItem -Recurse desktop\mpv -Filter libmpv-2.dll
       - run: if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
       - run: powershell -ExecutionPolicy Bypass -File tool\package_windows.ps1
       - uses: actions/upload-artifact@v4
@@ -34,15 +43,14 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v5
-      - run: |
-          sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev \
-            liblzma-dev libmpv-dev libsecret-1-dev libjsoncpp-dev patchelf
-      - uses: subosito/flutter-action@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
         with:
-          flutter-version: 3.44.8
-          channel: stable
-          cache: true
+          workspaces: desktop
+      - run: cargo install cargo-deb --locked
+      - name: Test
+        working-directory: desktop
+        run: cargo test --locked
       - run: bash tool/package_linux.sh
       - uses: actions/upload-artifact@v4
         with:
@@ -100,19 +108,13 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
-      - uses: subosito/flutter-action@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
         with:
-          flutter-version: 3.44.8
-          channel: stable
-          cache: true
-      - run: flutter build macos --release
-      # Universal (Intel + Apple Silicon) app, unsigned, in a drag-to-Applications .dmg.
-      - run: |
-          VERSION=$(grep '^version:' pubspec.yaml | sed -E 's/version: *([^+]*).*/\1/')
-          mkdir -p dist dmg
-          cp -R build/macos/Build/Products/Release/CAT.app dmg/
-          ln -s /Applications dmg/Applications
-          hdiutil create -volname CAT -srcfolder dmg -ov -format UDZO "dist/catplay-v$VERSION-macos.dmg"
+          workspaces: desktop
+      - run: brew install mpv dylibbundler
+      # Apple Silicon app with libmpv bundled, in a drag-to-Applications .dmg.
+      - run: bash tool/package_macos.sh
       - uses: actions/upload-artifact@v4
         with:
           name: macos

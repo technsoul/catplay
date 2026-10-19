@@ -1,17 +1,41 @@
 # CAT
 
-CAT is a fast IPTV player for Windows, Linux, macOS, Android TV and Android phones, built with Flutter and libmpv.
+CAT is a fast IPTV player for Windows, Linux, macOS, Android TV and Android phones.
+
+- **Desktop (Windows, Linux, macOS):** native Rust app in [`desktop/`](desktop/) — egui + libmpv.
+  It only redraws on input or when the video has a new frame, so it idles at 0% CPU and stays cool.
+- **Android TV and phones:** the Flutter app in `lib/`.
+
+Both use the same database layout, so the desktop app keeps the playlists, favorites and history of
+an earlier Flutter desktop install.
 
 - **Sources:** Xtream Codes API, M3U/M3U8 (URL or local file), XMLTV guides (`.xml` / `.xml.gz`)
 - **Live TV:** categories, channel list with now/next, preview player, channel zapping, auto-reconnect
 - **TV guide:** full-day timeline grid, day picker, programme details, catch-up (Xtream `tv_archive`)
 - **Movies & series:** poster grids, sorting, details/plot, seasons & episodes, resume where you left off
-- **Downloads:** save movies and episodes (or a whole season) to watch offline, with pause/resume
+- **Downloads:** save movies and episodes (or a whole season) to watch offline, with pause/resume (Android; desktop next)
 - **Search:** instant full-text search across all playlists (SQLite FTS5, prefix matching)
 - **Favorites, continue watching, recent channels**, multiple playlists
 - **Playback:** libmpv via `media_kit` — HEVC, AC3/E-AC3, MPEG-TS, HLS, hardware decoding, audio/subtitle tracks
 
-## Run / build
+## Desktop app (Rust)
+
+Requirements: Rust (stable) and libmpv at run time — `sudo apt install libmpv2` on Ubuntu 24.04+
+(`libmpv1` on 22.04), `brew install mpv` on macOS, or `libmpv-2.dll` next to the exe on Windows.
+
+```bash
+cd desktop
+cargo run --release
+cargo test
+```
+
+Packages: `tool/package_linux.sh` (.deb), `tool/package_windows.ps1` (setup .exe),
+`tool/package_macos.sh` (.dmg with libmpv bundled).
+
+Troubleshooting a stream: `CAT_MPV_LOG=v` writes mpv's log to `logs/app.log`, and
+`CAT_MPV_OPTS="key=value,…"` passes extra mpv options.
+
+## Flutter app (Android)
 
 Requirements: Flutter 3.44+, Visual Studio 2022+ with "Desktop development with C++",
 and **Windows Developer Mode** (needed for plugin symlinks: `start ms-settings:developers`).

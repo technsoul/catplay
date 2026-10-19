@@ -49,3 +49,4 @@ app.*.map.json
 
 # Rust desktop app
 /desktop/target/
+/desktop/mpv/

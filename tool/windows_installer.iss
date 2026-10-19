@@ -18,7 +18,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDir}
 OutputBaseFilename=catplay-v{#AppVersion}-windows-x64-setup
-SetupIconFile=..\windows\runner\resources\app_icon.ico
+SetupIconFile=..\desktop\assets\app_icon.ico
 UninstallDisplayIcon={app}\CAT.exe
 Compression=lzma2/max
 SolidCompression=yes
@@ -26,6 +26,13 @@ WizardStyle=modern
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+
+[InstallDelete]
+; Files of the older Flutter build, replaced by the Rust app.
+Type: filesandordirs; Name: "{app}\data"
+Type: files; Name: "{app}\flutter_windows.dll"
+Type: files; Name: "{app}\*_plugin.dll"
+Type: files; Name: "{app}\sqlite3.dll"
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

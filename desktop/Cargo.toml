@@ -28,8 +28,25 @@ serde_json = "1.0.154"
 sha1_smol = "1.0.1"
 ureq = { version = "3.4.2", features = ["json"] }
 
+[build-dependencies]
+winresource = "0.1"
+
 [profile.release]
 lto = true
 codegen-units = 1
 opt-level = 3
 strip = true
+
+[package.metadata.deb]
+name = "catplay"
+maintainer = "CAT <noreply@catplay.app>"
+section = "video"
+priority = "optional"
+extended-description = "Xtream Codes, M3U/M3U8 and XMLTV guides, live TV, movies and series."
+# libmpv, OpenGL and the X11/Wayland libraries are loaded at run time.
+depends = "$auto, libmpv2 | libmpv1, libgl1, libegl1, libxkbcommon-x11-0, libwayland-client0, libwayland-egl1, libx11-6"
+assets = [
+    ["target/release/catplay", "usr/bin/", "755"],
+    ["assets/linux/catplay.desktop", "usr/share/applications/", "644"],
+    ["assets/linux/catplay.png", "usr/share/icons/hicolor/512x512/apps/", "644"],
+]

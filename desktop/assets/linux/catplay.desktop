@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=CAT
+Comment=Fast IPTV player: Xtream Codes, M3U, XMLTV guide, movies & series
+Exec=/usr/bin/catplay
+Icon=catplay
+Categories=AudioVideo;Video;Player;TV;
+StartupWMClass=catplay
+Terminal=false

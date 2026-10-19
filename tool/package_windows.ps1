@@ -1,19 +1,27 @@
-# Builds the Windows release and packages it as an installer (.exe) in dist/.
-# Needs Inno Setup 6 (https://jrsoftware.org/isinfo.php, or `choco install innosetup`).
+# Builds the Rust desktop app and packages it as an installer (.exe) in dist/.
+# Needs Rust, Inno Setup 6 (https://jrsoftware.org/isinfo.php, or `choco install innosetup`)
+# and libmpv-2.dll in desktop\mpv\ (from https://github.com/shinchiro/mpv-winbuild-cmake/releases,
+# the mpv-dev-x86_64-*.7z archive).
 #
 #   powershell -ExecutionPolicy Bypass -File tool\package_windows.ps1
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
 
-$version = ((Select-String -Path pubspec.yaml -Pattern '^version:\s*([^+\s]+)').Matches[0].Groups[1].Value)
+$version = ((Select-String -Path desktop\Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value)
 
-flutter build windows --release
-if ($LASTEXITCODE -ne 0) { throw 'flutter build windows failed' }
+Push-Location desktop
+cargo build --release --locked
+if ($LASTEXITCODE -ne 0) { throw 'cargo build failed' }
+Pop-Location
+
+$mpv = Get-ChildItem -Recurse desktop\mpv -Filter libmpv-2.dll | Select-Object -First 1
+if (-not $mpv) { throw 'libmpv-2.dll not found in desktop\mpv' }
 
 $stage = Join-Path ([IO.Path]::GetTempPath()) "catplay-$version-windows"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
-Copy-Item -Recurse build\windows\x64\runner\Release $stage
-Rename-Item (Join-Path $stage 'iptv_player.exe') 'CAT.exe'
+New-Item -ItemType Directory $stage | Out-Null
+Copy-Item desktop\target\release\catplay.exe (Join-Path $stage 'CAT.exe')
+Copy-Item $mpv.FullName $stage
 
 $iscc = (Get-Command iscc.exe -ErrorAction SilentlyContinue).Source
 if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }

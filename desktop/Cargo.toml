@@ -1,0 +1,35 @@
+[package]
+name = "catplay"
+version = "0.4.0"
+edition = "2024"
+description = "CAT - fast desktop IPTV player"
+authors = ["TechSouls <krash.abedo@gmail.com>"]
+license = "Proprietary"
+repository = "https://github.com/technsoul/catplay"
+
+[dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+crossbeam-channel = "0.5.17"
+dirs = "7.0.0"
+eframe = { version = "0.36.2", default-features = false, features = ["glow", "default_fonts", "wayland", "x11", "accesskit"] }
+flate2 = "1.1.10"
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "vendored", "crypto-rust"] }
+libloading = "0.9.0"
+log = "0.4.34"
+memchr = "2.8.3"
+open = "5.4.4"
+parking_lot = "0.12.5"
+raw-window-handle = "0.6"
+rfd = "0.17.2"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha1_smol = "1.0.1"
+ureq = { version = "3.4.2", features = ["json"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+strip = true

@@ -46,3 +46,6 @@ app.*.map.json
 
 # Packaged apps (published as GitHub Releases, not committed)
 /dist/
+
+# Rust desktop app
+/desktop/target/

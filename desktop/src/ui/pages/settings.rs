@@ -24,6 +24,10 @@ pub enum AfterVerify {
 #[derive(Default)]
 pub struct State {
     pub dialog: Option<PinDialog>,
+    /// Image cache size, refreshed when the counter changes.
+    cache_size: crate::ui::data::Cached<u32, u64>,
+    cache_gen: u32,
+    clearing: Option<crate::db::Task<()>>,
 }
 
 fn pin_dialog(app: &mut App, ctx: &egui::Context) {
@@ -178,6 +182,30 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     app.pages.settings.dialog = Some(PinDialog::Choose { first: None, pin: String::new(), error: None });
                 }
             }
+        });
+
+        group(ui, "Storage", |ui| {
+            let st = &mut app.pages.settings;
+            if let Some(t) = &st.clearing
+                && t.take().is_some()
+            {
+                st.clearing = None;
+                st.cache_gen += 1;
+            }
+            let dir = app.images.cache_dir.clone();
+            let size = st.cache_size.get(&st.cache_gen, || crate::db::background(move || Ok(crate::images::Images::disk_usage(&dir)))).copied();
+            ui.horizontal(|ui| {
+                let text = match size {
+                    Some(b) => format!("Image cache: {} of channel logos and posters", crate::downloads::format_bytes(b as f64)),
+                    None => "Image cache: calculating…".into(),
+                };
+                ui.label(text);
+                if ui.add_enabled(st.clearing.is_none(), egui::Button::new("Clear")).clicked() {
+                    st.clearing = Some(app.images.clear());
+                    app.toast = Some(("Image cache cleared".into(), std::time::Instant::now()));
+                }
+            });
+            ui.label(dim("Images download again when they are shown."));
         });
 
         group(ui, "History", |ui| {

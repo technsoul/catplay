@@ -94,6 +94,8 @@ pub struct Player {
     pub last_live: Option<String>,
     /// Set when a movie or episode played to the end.
     pub finished: bool,
+    /// Video fit mode (see [`Player::set_fit`]).
+    pub fit: String,
 }
 
 impl Player {
@@ -167,7 +169,7 @@ impl Player {
             unsafe { (m.api.request_log_messages)(m.handle, level.as_ptr()) };
             spawn_event_loop(m.clone(), shared.clone());
         }
-        Self {
+        let mut player = Self {
             downloads,
             mpv,
             unavailable,
@@ -191,7 +193,10 @@ impl Player {
             volume_dirty: false,
             last_live: None,
             finished: false,
-        }
+            fit: String::new(),
+        };
+        player.set_fit(&settings.video_fit);
+        player
     }
 
     pub fn position(&self) -> f64 {
@@ -220,6 +225,15 @@ impl Player {
 
     pub fn is_live(&self) -> bool {
         self.playable.as_ref().is_some_and(Playable::is_live)
+    }
+
+    /// `fit` letterboxes, `fill` crops to fill, `stretch` ignores the aspect.
+    pub fn set_fit(&mut self, mode: &str) {
+        self.fit = mode.to_string();
+        if let Some(m) = &self.mpv {
+            m.set("keepaspect", if mode == "stretch" { "no" } else { "yes" });
+            m.set("panscan", if mode == "fill" { "1.0" } else { "0.0" });
+        }
     }
 
     pub fn zap_index(&self) -> Option<i64> {

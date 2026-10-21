@@ -35,9 +35,32 @@ pub struct Images {
     queue: Arc<(Mutex<Queue>, Condvar)>,
     done: Arc<Mutex<Vec<(String, Option<ColorImage>)>>>,
     frame: u64,
+    pub cache_dir: PathBuf,
 }
 
 impl Images {
+    /// Bytes used by the disk cache (walks the folder; call off the UI thread).
+    pub fn disk_usage(dir: &std::path::Path) -> u64 {
+        std::fs::read_dir(dir)
+            .map(|d| d.flatten().filter_map(|e| e.metadata().ok()).filter(|m| m.is_file()).map(|m| m.len()).sum())
+            .unwrap_or(0)
+    }
+
+    /// Forgets every image and deletes the disk cache; images on screen load
+    /// again.
+    pub fn clear(&mut self) -> crate::db::Task<()> {
+        self.slots.clear();
+        let dir = self.cache_dir.clone();
+        crate::db::background(move || {
+            if let Ok(d) = std::fs::read_dir(&dir) {
+                for e in d.flatten() {
+                    let _ = std::fs::remove_file(e.path());
+                }
+            }
+            Ok(())
+        })
+    }
+
     pub fn new(cache_dir: PathBuf) -> Self {
         let queue = Arc::new((Mutex::new(Queue { stack: vec![], queued: HashSet::new(), busy: HashSet::new() }), Condvar::new()));
         let done: Arc<Mutex<Vec<(String, Option<ColorImage>)>>> = Arc::default();
@@ -66,7 +89,7 @@ impl Images {
                 })
                 .expect("spawn image worker");
         }
-        Self { slots: HashMap::new(), queue, done, frame: 0 }
+        Self { slots: HashMap::new(), queue, done, frame: 0, cache_dir }
     }
 
     /// Uploads finished images; call once per frame.

@@ -48,6 +48,15 @@ impl Section {
     ];
 }
 
+/// The window as it was before picture-in-picture.
+struct PipRestore {
+    position: Option<egui::Pos2>,
+    size: Vec2,
+    maximized: bool,
+    fullscreen: bool,
+    full_player: bool,
+}
+
 pub struct App {
     pub db: Db,
     pub importer: Importer,
@@ -74,6 +83,7 @@ pub struct App {
     autoplay_done: bool,
     pub toast: Option<(String, Instant)>,
     pub pages: pages::Pages,
+    pip: Option<PipRestore>,
 }
 
 impl App {
@@ -115,6 +125,7 @@ impl App {
             autoplay_done: false,
             toast: None,
             pages: pages::Pages::default(),
+            pip: None,
         }
     }
 
@@ -170,15 +181,20 @@ impl App {
         if self.player.playable.is_some()
             && let (Some(v), Some(gl)) = (&mut self.video, &self.gl)
         {
-            // Fit the video's aspect ratio inside the rect.
-            let aspect = self.player.video_size().map_or(16.0 / 9.0, |(w, h)| w / h) as f32;
-            let mut size = rect.size();
-            if size.x / size.y > aspect {
-                size.x = size.y * aspect;
+            // Fit: letterbox here so the video texture stays small. Fill and
+            // stretch use the whole rect and mpv crops or stretches.
+            let target = if self.player.fit == "fit" {
+                let aspect = self.player.video_size().map_or(16.0 / 9.0, |(w, h)| w / h) as f32;
+                let mut size = rect.size();
+                if size.x / size.y > aspect {
+                    size.x = size.y * aspect;
+                } else {
+                    size.y = size.x / aspect;
+                }
+                Rect::from_center_size(rect.center(), size)
             } else {
-                size.y = size.x / aspect;
-            }
-            let target = Rect::from_center_size(rect.center(), size);
+                rect
+            };
             let (w, h) = ((target.width() * ppp).round() as i32, (target.height() * ppp).round() as i32);
             if v.render(gl, w, h) {
                 egui::Image::new((v.texture_id, target.size())).paint_at(ui, target);
@@ -312,7 +328,12 @@ impl App {
         if icon_button(&mut right, "⛶", 40.0, "Full screen (F)").clicked() {
             toggle_fullscreen(right.ctx());
         }
+        if icon_button(&mut right, "🗗", 40.0, "Picture in picture (P)").clicked() {
+            let ctx = right.ctx().clone();
+            self.enter_pip(&ctx);
+        }
         self.tracks_menu(&mut right);
+        self.fit_menu(&mut right);
         let mut vol = self.player.volume();
         right.spacing_mut().slider_width = 110.0;
         if right.add(egui::Slider::new(&mut vol, 0.0..=100.0).show_value(false)).changed() {
@@ -334,6 +355,140 @@ impl App {
                 self.player.seek_to(pos);
             }
         }
+    }
+
+    // ---- picture-in-picture ----------------------------------------------------------
+
+    /// Shrinks the window to a small, frameless, always-on-top video in the
+    /// screen corner. The app keeps its state underneath.
+    pub fn enter_pip(&mut self, ctx: &egui::Context) {
+        if self.pip.is_some() || self.player.playable.is_none() {
+            return;
+        }
+        let (outer, inner, maximized, fullscreen, monitor) = ctx.input(|i| {
+            let v = i.viewport();
+            (v.outer_rect, v.inner_rect, v.maximized.unwrap_or(false), v.fullscreen.unwrap_or(false), v.monitor_size)
+        });
+        self.pip = Some(PipRestore {
+            position: outer.map(|r| r.min),
+            size: inner.map_or(vec2(1360.0, 820.0), |r| r.size()),
+            maximized,
+            fullscreen,
+            full_player: self.full_player,
+        });
+        let size = vec2(400.0, 225.0);
+        let cmds = [
+            egui::ViewportCommand::Fullscreen(false),
+            egui::ViewportCommand::Maximized(false),
+            egui::ViewportCommand::Decorations(false),
+            egui::ViewportCommand::WindowLevel(egui::WindowLevel::AlwaysOnTop),
+            egui::ViewportCommand::MinInnerSize(vec2(240.0, 135.0)),
+            egui::ViewportCommand::InnerSize(size),
+        ];
+        for c in cmds {
+            ctx.send_viewport_cmd(c);
+        }
+        if let Some(m) = monitor {
+            // Bottom-right, clear of a taskbar or dock.
+            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(m.x - size.x - 24.0, m.y - size.y - 72.0)));
+        }
+    }
+
+    pub fn exit_pip(&mut self, ctx: &egui::Context) {
+        let Some(r) = self.pip.take() else { return };
+        ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(egui::WindowLevel::Normal));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(true));
+        ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(vec2(900.0, 560.0)));
+        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(r.size));
+        if let Some(p) = r.position {
+            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(p));
+        }
+        if r.maximized {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+        }
+        if r.fullscreen {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
+        }
+        self.full_player = r.full_player;
+    }
+
+    fn pip_view(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        let rect = ui.max_rect();
+        let resp = self.video_surface(ui, rect);
+        let resp = resp.interact(Sense::click_and_drag());
+        if resp.drag_started() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+        }
+        if resp.double_clicked() {
+            self.exit_pip(&ctx);
+            return;
+        }
+        if self.player.playable.is_none() {
+            // Playback ended or failed: back to the full window.
+            self.exit_pip(&ctx);
+            return;
+        }
+        if !ui.rect_contains_pointer(rect) {
+            return;
+        }
+        // Controls while the mouse is over the video.
+        gradient(ui.painter(), Rect::from_min_size(rect.min, vec2(rect.width(), 54.0)), true);
+        gradient(ui.painter(), Rect::from_min_max(egui::pos2(rect.min.x, rect.max.y - 60.0), rect.max), false);
+        let top = Rect::from_min_size(rect.min + vec2(8.0, 8.0), vec2(rect.width() - 16.0, 32.0));
+        let mut bar = ui.new_child(egui::UiBuilder::new().max_rect(top).layout(egui::Layout::right_to_left(egui::Align::Center)));
+        if icon_button(&mut bar, "✖", 30.0, "Stop and close").clicked() {
+            self.player.stop();
+            self.exit_pip(&ctx);
+            return;
+        }
+        if icon_button(&mut bar, "🗗", 30.0, "Back to the full window (double-click)").clicked() {
+            self.exit_pip(&ctx);
+            return;
+        }
+        let bottom = Rect::from_min_max(egui::pos2(rect.min.x + 8.0, rect.max.y - 44.0), rect.max - vec2(8.0, 8.0));
+        let mut row = ui.new_child(egui::UiBuilder::new().max_rect(bottom).layout(egui::Layout::left_to_right(egui::Align::Center)));
+        if self.player.is_live() {
+            if self.player.can_zap() {
+                if icon_button(&mut row, "▲", 32.0, "Previous channel").clicked() {
+                    self.player.zap(-1);
+                }
+                if icon_button(&mut row, "▼", 32.0, "Next channel").clicked() {
+                    self.player.zap(1);
+                }
+            }
+        } else {
+            let icon = if self.player.paused() { "▶" } else { "⏸" };
+            if icon_button(&mut row, icon, 32.0, "Play / pause").clicked() {
+                self.player.toggle_pause();
+            }
+        }
+        if let Some(p) = &self.player.playable {
+            row.add(egui::Label::new(egui::RichText::new(&p.title).color(TEXT).font(font(12.5))).truncate());
+        }
+        // Resize from the bottom-right corner.
+        let grip = Rect::from_min_size(rect.max - vec2(18.0, 18.0), vec2(18.0, 18.0));
+        let g = ui.interact(grip, egui::Id::new("pip-grip"), Sense::drag()).on_hover_cursor(egui::CursorIcon::ResizeSouthEast);
+        ui.painter().text(grip.center(), Align2::CENTER_CENTER, "◢", font(12.0), TEXT_SOFT);
+        if g.drag_started() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(egui::viewport::ResizeDirection::SouthEast));
+        }
+    }
+
+    fn fit_menu(&mut self, ui: &mut egui::Ui) {
+        let r = icon_button(ui, "⬚", 40.0, "Zoom: fit, fill or stretch (Z)");
+        egui::Popup::menu(&r).show(|ui| {
+            for (mode, label) in [("fit", "Fit"), ("fill", "Fill (crop)"), ("stretch", "Stretch")] {
+                if ui.selectable_label(self.player.fit == mode, label).clicked() {
+                    self.set_fit(mode);
+                }
+            }
+        });
+    }
+
+    pub fn set_fit(&mut self, mode: &str) {
+        self.player.set_fit(mode);
+        self.settings.video_fit = mode.to_string();
     }
 
     fn tracks_menu(&mut self, ui: &mut egui::Ui) {
@@ -398,6 +553,23 @@ impl App {
         }
         if f {
             toggle_fullscreen(ctx);
+        }
+        if ctx.input(|i| i.key_pressed(Key::P)) {
+            self.enter_pip(ctx);
+            return;
+        }
+        if ctx.input(|i| i.key_pressed(Key::Z)) {
+            let next = match self.player.fit.as_str() {
+                "fit" => "fill",
+                "fill" => "stretch",
+                _ => "fit",
+            };
+            self.set_fit(next);
+            self.notify(match next {
+                "fill" => "Zoom: fill (crop)",
+                "stretch" => "Zoom: stretch",
+                _ => "Zoom: fit",
+            });
         }
         if m {
             self.player.toggle_mute();
@@ -526,6 +698,10 @@ impl App {
             }
             if ui.small_button("⏹ Stop").clicked() {
                 self.player.stop();
+            }
+            if ui.small_button("🗗").on_hover_text("Picture in picture").clicked() {
+                let ctx = ui.ctx().clone();
+                self.enter_pip(&ctx);
             }
         });
     }
@@ -657,6 +833,20 @@ impl eframe::App for App {
         let db = self.db.clone();
         if let Some(list) = self.sources.get(&v, || db.read(repo::sources)) {
             self.sources_list = list.clone();
+        }
+        if self.lock.locked && self.pip.is_some() {
+            self.exit_pip(&ctx);
+        }
+        if self.pip.is_some() {
+            egui::CentralPanel::no_frame().frame(egui::Frame::new().fill(Color32::BLACK)).show(ui, |ui| self.pip_view(ui));
+            if ctx.input(|i| i.key_pressed(Key::Escape) || i.key_pressed(Key::P)) {
+                self.exit_pip(&ctx);
+            }
+            if ctx.input(|i| i.key_pressed(Key::Space)) && !self.player.is_live() {
+                self.player.toggle_pause();
+            }
+            self.persist_settings();
+            return;
         }
         if self.lock.locked {
             // Nothing else is drawn (or started) behind the lock screen.

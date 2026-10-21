@@ -15,6 +15,8 @@ an earlier Flutter desktop install.
 - **Movies & series:** poster grids, sorting, details/plot, seasons & episodes, resume where you left off
 - **Downloads:** save movies and episodes (or a whole season) to watch offline, with pause/resume
 - **App lock:** optional PIN asked at start-up (salted hash in the OS credential store)
+- **Picture-in-picture** (desktop): a small always-on-top video in the screen corner (P)
+- **Zoom:** fit, fill (crop) or stretch (Z)
 - **Search:** instant full-text search across all playlists (SQLite FTS5, prefix matching)
 - **Favorites, continue watching, recent channels**, multiple playlists
 - **Playback:** libmpv via `media_kit` — HEVC, AC3/E-AC3, MPEG-TS, HLS, hardware decoding, audio/subtitle tracks

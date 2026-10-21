@@ -22,6 +22,8 @@ pub struct Settings {
     pub active_source_id: Option<i64>,
     pub last_channel_key: Option<String>,
     pub autoplay_last_channel: bool,
+    /// How video fills the player: `fit`, `fill` (crop) or `stretch`.
+    pub video_fit: String,
 }
 
 impl Default for Settings {
@@ -40,6 +42,7 @@ impl Default for Settings {
             active_source_id: None,
             last_channel_key: None,
             autoplay_last_channel: false,
+            video_fit: "fit".into(),
         }
     }
 }

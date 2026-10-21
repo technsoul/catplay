@@ -1,6 +1,6 @@
 [package]
 name = "catplay"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 description = "CAT - fast desktop IPTV player"
 authors = ["TechSouls <krash.abedo@gmail.com>"]

@@ -111,7 +111,18 @@ fn history_row(app: &mut App, ui: &mut egui::Ui, list: &[HistoryEntry], channels
                 if hover {
                     ui.painter().text(art.center(), Align2::CENTER_CENTER, "▶", font(28.0), TEXT);
                 }
-                if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                // Remove from the row.
+                let x = Rect::from_center_size(rect.right_top() + vec2(-18.0, 18.0), vec2(24.0, 24.0));
+                let xr = ui.interact(x, ui.id().with(("remove", e.source_id, &e.key)), Sense::click());
+                if hover || xr.hovered() {
+                    ui.painter().circle_filled(x.center(), 12.0, if xr.hovered() { RAISED } else { egui::Color32::from_black_alpha(160) });
+                    ui.painter().text(x.center(), Align2::CENTER_CENTER, "✖", font(11.0), TEXT);
+                }
+                let tip = if channels { "Remove from recent channels" } else { "Remove from Continue watching" };
+                if xr.on_hover_text(tip).clicked() {
+                    let (sid, key) = (e.source_id, e.key.clone());
+                    app.db.write(&[Group::History], move |c| repo::remove_history(c, sid, &key));
+                } else if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                     super::play_history(app, e);
                 }
             }

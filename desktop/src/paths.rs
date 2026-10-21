@@ -10,6 +10,9 @@ pub struct Paths {
     pub import_temp: PathBuf,
     pub image_cache: PathBuf,
     pub logs: PathBuf,
+    /// Where downloaded movies and episodes are saved.
+    pub downloads: PathBuf,
+    pub downloads_index: PathBuf,
 }
 
 fn app_folder() -> PathBuf {
@@ -32,6 +35,8 @@ impl Paths {
             logs: support.join("logs"),
             import_temp: std::env::temp_dir().join("iptv_import"),
             image_cache: cache.join("images"),
+            downloads: dirs::download_dir().map_or_else(|| support.join("downloads"), |d| d.join("CAT")),
+            downloads_index: support.join("downloads.json"),
             support,
         }
     }

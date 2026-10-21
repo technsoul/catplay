@@ -67,6 +67,7 @@ struct Prepared {
 }
 
 pub struct Player {
+    downloads: crate::downloads::Downloads,
     pub mpv: Option<Arc<Mpv>>,
     /// Why libmpv is unavailable.
     pub unavailable: Option<String>,
@@ -91,10 +92,12 @@ pub struct Player {
     pub volume_dirty: bool,
     /// `source|key` of the live channel last opened, for settings.
     pub last_live: Option<String>,
+    /// Set when a movie or episode played to the end.
+    pub finished: bool,
 }
 
 impl Player {
-    pub fn new(db: Db, settings: &Settings) -> Self {
+    pub fn new(db: Db, settings: &Settings, downloads: crate::downloads::Downloads) -> Self {
         let shared: Arc<Mutex<Shared>> = Arc::new(Mutex::new(Shared { volume: settings.volume, ..Default::default() }));
         let cache = settings.cache_seconds.to_string();
         let ua = if settings.user_agent.is_empty() { crate::http::DEFAULT_USER_AGENT.to_string() } else { settings.user_agent.clone() };
@@ -165,6 +168,7 @@ impl Player {
             spawn_event_loop(m.clone(), shared.clone());
         }
         Self {
+            downloads,
             mpv,
             unavailable,
             shared,
@@ -186,6 +190,7 @@ impl Player {
             default_user_agent: ua,
             volume_dirty: false,
             last_live: None,
+            finished: false,
         }
     }
 
@@ -282,6 +287,9 @@ impl Player {
             None => "none".into(),
         };
         m.set("start", &start);
+        // Downloaded movies and episodes play from disk.
+        let local = if p.is_live() { None } else { self.downloads.local_path(p.source_id, &p.key) };
+        let url = local.unwrap_or_else(|| p.url.clone());
         {
             let mut s = self.shared.lock();
             s.last_error.clear();
@@ -294,7 +302,7 @@ impl Player {
         self.progress = 0.0;
         self.ignore_until = Instant::now() + Duration::from_millis(700);
         self.stable_since = None;
-        m.command(&["loadfile", &p.url, "replace"]);
+        m.command(&["loadfile", &url, "replace"]);
         m.set_flag("pause", false);
         if p.is_live() {
             let pp = p.clone();
@@ -314,7 +322,8 @@ impl Player {
         self.last_pos = None;
         self.progress = 0.0;
         self.ignore_until = Instant::now() + Duration::from_millis(700);
-        m.command(&["loadfile", &p.url, "replace"]);
+        let local = if p.is_live() { None } else { self.downloads.local_path(p.source_id, &p.key) };
+        m.command(&["loadfile", &local.unwrap_or(p.url), "replace"]);
     }
 
     pub fn retry(&mut self) {
@@ -474,6 +483,7 @@ impl Player {
                         self.playable = None;
                         self.phase = Phase::Idle;
                         self.save_at = None;
+                        self.finished = true;
                     }
                 }
                 PlayerEvent::Failed(msg) => self.on_error(msg),

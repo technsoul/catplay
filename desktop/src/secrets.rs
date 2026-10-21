@@ -41,40 +41,52 @@ fn write_fallback(map: &HashMap<String, String>) {
     }
 }
 
-fn entry(source_id: i64) -> Option<keyring::Entry> {
-    keyring::Entry::new(SERVICE, &account(source_id)).ok()
+fn entry(key: &str) -> Option<keyring::Entry> {
+    keyring::Entry::new(SERVICE, key).ok()
 }
 
-pub fn password(source_id: i64) -> Option<String> {
+pub fn get(key: &str) -> Option<String> {
     let _g = LOCK.lock();
-    if let Some(p) = entry(source_id).and_then(|e| e.get_password().ok()) {
+    if let Some(p) = entry(key).and_then(|e| e.get_password().ok()) {
         return Some(p);
     }
-    read_fallback().get(&account(source_id)).cloned()
+    read_fallback().get(key).cloned()
 }
 
-pub fn set_password(source_id: i64, value: &str) {
+pub fn set(key: &str, value: &str) {
     let _g = LOCK.lock();
-    let stored = entry(source_id).is_some_and(|e| e.set_password(value).is_ok());
+    let stored = entry(key).is_some_and(|e| e.set_password(value).is_ok());
     let mut map = read_fallback();
     if stored {
-        if map.remove(&account(source_id)).is_some() {
+        if map.remove(key).is_some() {
             write_fallback(&map);
         }
     } else {
-        log::warn!("no credential store; keeping the password in a private file");
-        map.insert(account(source_id), value.to_string());
+        log::warn!("no credential store; keeping the secret in a private file");
+        map.insert(key.to_string(), value.to_string());
         write_fallback(&map);
     }
 }
 
-pub fn delete(source_id: i64) {
+pub fn remove(key: &str) {
     let _g = LOCK.lock();
-    if let Some(e) = entry(source_id) {
+    if let Some(e) = entry(key) {
         let _ = e.delete_credential();
     }
     let mut map = read_fallback();
-    if map.remove(&account(source_id)).is_some() {
+    if map.remove(key).is_some() {
         write_fallback(&map);
     }
+}
+
+pub fn password(source_id: i64) -> Option<String> {
+    get(&account(source_id))
+}
+
+pub fn set_password(source_id: i64, value: &str) {
+    set(&account(source_id), value);
+}
+
+pub fn delete(source_id: i64) {
+    remove(&account(source_id));
 }

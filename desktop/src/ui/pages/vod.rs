@@ -7,6 +7,7 @@ use super::super::theme::*;
 use super::super::widgets::*;
 use super::live::{Filter, categories_panel};
 use crate::db::{self, Group, Task};
+use crate::downloads::{self, Downloads, Status};
 use crate::model::{Category, Episode, ItemKind, MediaItem, Playable};
 use crate::parse::xtream::{SeriesInfo, str_of};
 use crate::repo::{self, ItemQuery, ItemSort};
@@ -244,7 +245,10 @@ fn details(app: &mut App, ui: &mut egui::Ui, kind: ItemKind, source: &crate::mod
                             play = Some(movie_playable(&item, resume));
                         }
                         if resume.is_some() && pill(ui, "Start over", false).clicked() {
-                            play = Some(movie_playable(&item, Some(0)).with_start_over());
+                            play = Some(movie_playable(&item, Some(0)));
+                        }
+                        if downloads::is_downloadable(item.url.as_deref()) {
+                            download_button(ui, &app.downloads, item.source_id, &item.key, || app.downloads.add_item(&item));
                         }
                     }
                     let fav = if item.favorite { "★  Favorite" } else { "☆  Add to favorites" };
@@ -274,7 +278,8 @@ fn details(app: &mut App, ui: &mut egui::Ui, kind: ItemKind, source: &crate::mod
 
         if let Some(Ok(Info::Series(s))) = &d.loaded {
             ui.add_space(18.0);
-            episodes(ui, &mut app.images, s, &item, &mut d.season, &mut play);
+            let cover = field("cover").or_else(|| item.logo.clone());
+            episodes(ui, &mut app.images, &app.downloads, s, &item, cover, &mut d.season, &mut play);
         } else if kind == ItemKind::Series && matches!(d.loaded, Some(Ok(Info::None))) {
             ui.add_space(18.0);
             ui.label(dim("Episodes are only available for Xtream Codes playlists."));
@@ -295,15 +300,35 @@ fn details(app: &mut App, ui: &mut egui::Ui, kind: ItemKind, source: &crate::mod
     }
 }
 
-trait StartOver {
-    fn with_start_over(self) -> Self;
-}
-
-impl StartOver for Playable {
-    /// Resume at 0 means "do not look up a saved position".
-    fn with_start_over(mut self) -> Self {
-        self.resume_ms = Some(0);
-        self
+/// A pill showing an item's download state; starts or resumes it on click.
+fn download_button(ui: &mut egui::Ui, dl: &Downloads, source_id: i64, key: &str, add: impl FnOnce()) {
+    let current = dl.find(source_id, key);
+    let label = match &current {
+        None => "⬇  Download".to_string(),
+        Some(d) => match d.status {
+            Status::Queued => "⬇  Waiting…".into(),
+            Status::Downloading => format!("⬇  {:.0}%", d.fraction().unwrap_or(0.0) * 100.0),
+            Status::Paused => "⬇  Paused · resume".into(),
+            Status::Failed => "⬇  Failed · retry".into(),
+            Status::Done => "✔  Downloaded".into(),
+        },
+    };
+    let r = pill(ui, &label, false);
+    match &current {
+        None => {
+            if r.on_hover_text("Save to watch offline").clicked() {
+                add();
+            }
+        }
+        Some(d) if matches!(d.status, Status::Paused | Status::Failed) => {
+            if r.clicked() {
+                dl.resume(&d.id());
+            }
+        }
+        Some(d) if d.status == Status::Done => {
+            r.on_hover_text("Plays from your computer. Manage it in Downloads.");
+        }
+        _ => {}
     }
 }
 
@@ -323,7 +348,17 @@ fn movie_playable(item: &MediaItem, resume: Option<i64>) -> Playable {
     }
 }
 
-fn episodes(ui: &mut egui::Ui, images: &mut crate::images::Images, s: &SeriesInfo, item: &MediaItem, season: &mut i64, play: &mut Option<Playable>) {
+#[allow(clippy::too_many_arguments)]
+fn episodes(
+    ui: &mut egui::Ui,
+    images: &mut crate::images::Images,
+    dl: &Downloads,
+    s: &SeriesInfo,
+    item: &MediaItem,
+    cover: Option<String>,
+    season: &mut i64,
+    play: &mut Option<Playable>,
+) {
     let mut seasons: Vec<i64> = s.episodes.iter().map(|e| e.season).collect();
     seasons.dedup();
     if seasons.is_empty() {
@@ -333,20 +368,62 @@ fn episodes(ui: &mut egui::Ui, images: &mut crate::images::Images, s: &SeriesInf
     if !seasons.contains(season) {
         *season = seasons[0];
     }
+    let in_season: Vec<_> = s.episodes.iter().filter(|e| e.season == *season).collect();
     ui.horizontal_wrapped(|ui| {
         for n in &seasons {
             if ui.selectable_label(*season == *n, format!("Season {n}")).clicked() {
                 *season = *n;
             }
         }
+        let missing: Vec<_> = in_season
+            .iter()
+            .filter(|e| downloads::is_downloadable(Some(&e.url)) && dl.find(item.source_id, &format!("ep:{}", e.id)).is_none())
+            .collect();
+        if !missing.is_empty() && ui.button(format!("⬇ Download season ({})", missing.len())).clicked() {
+            for e in missing {
+                dl.add_episode(item, e, cover.clone());
+            }
+        }
     });
     ui.add_space(8.0);
-    for e in s.episodes.iter().filter(|e| e.season == *season) {
+    for e in in_season {
         let (rect, resp) = row(ui, 92.0, false);
+        // Download state / button on the right.
+        let key = format!("ep:{}", e.id);
+        let btn = Rect::from_center_size(rect.right_center() - vec2(70.0, 0.0), vec2(120.0, 30.0));
+        let state = dl.find(item.source_id, &key);
+        let btn_label = match &state {
+            None if downloads::is_downloadable(Some(&e.url)) => Some("⬇ Download".to_string()),
+            None => None,
+            Some(d) => Some(match d.status {
+                Status::Queued => "Waiting…".into(),
+                Status::Downloading => format!("{:.0}%", d.fraction().unwrap_or(0.0) * 100.0),
+                Status::Paused => "Paused".into(),
+                Status::Failed => "Failed · retry".into(),
+                Status::Done => "✔ Downloaded".into(),
+            }),
+        };
+        let mut btn_clicked = false;
+        if let Some(label) = &btn_label {
+            let r = ui.interact(btn, ui.id().with(("ep-dl", &e.id)), egui::Sense::click());
+            let color = if state.as_ref().is_some_and(|d| d.status == Status::Done) { SUCCESS } else if r.hovered() { TEXT } else { TEXT_DIM };
+            if r.hovered() {
+                ui.painter().rect_filled(btn, egui::CornerRadius::same(15), RAISED);
+            }
+            ui.painter().text(btn.center(), Align2::CENTER_CENTER, label, font(12.5), color);
+            if r.clicked() {
+                btn_clicked = true;
+                match &state {
+                    None => dl.add_episode(item, e, cover.clone()),
+                    Some(d) if matches!(d.status, Status::Paused | Status::Failed) => dl.resume(&d.id()),
+                    _ => {}
+                }
+            }
+        }
         let thumb = Rect::from_min_size(rect.min + vec2(10.0, 8.0), vec2(136.0, 76.0));
         picture(ui, images, thumb, e.image.as_deref().or(item.logo.as_deref()), &e.title, 8, true);
         let x = thumb.right() + 14.0;
-        let w = rect.right() - x - 14.0;
+        let w = btn.left() - x - 14.0;
         text_in(ui, egui::pos2(x, rect.top() + 12.0), &format!("{}. {}", e.number, e.title), bold_font(14.5), TEXT, w);
         if let Some(plot) = &e.plot {
             text_in(ui, egui::pos2(x, rect.top() + 36.0), plot, font(12.5), TEXT_DIM, w);
@@ -357,7 +434,7 @@ fn episodes(ui: &mut egui::Ui, images: &mut crate::images::Images, s: &SeriesInf
         if resp.hovered() {
             ui.painter().text(thumb.center(), Align2::CENTER_CENTER, "▶", font(26.0), TEXT);
         }
-        if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+        if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() && !btn_clicked {
             *play = Some(episode_playable(item, e));
         }
     }
@@ -368,7 +445,7 @@ fn episode_playable(item: &MediaItem, e: &Episode) -> Playable {
         source_id: item.source_id,
         key: format!("ep:{}", e.id),
         kind: ItemKind::Series,
-        title: format!("S{:02}E{:02} · {}", e.season, e.number, e.title),
+        title: downloads::episode_title(e),
         subtitle: Some(item.name.clone()),
         url: e.url.clone(),
         logo: item.logo.clone(),

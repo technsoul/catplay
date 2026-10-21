@@ -2,9 +2,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod db;
+mod downloads;
 mod http;
 mod images;
 mod import;
+mod lock;
 mod log_file;
 mod model;
 mod parse;
@@ -40,6 +42,12 @@ fn main() -> eframe::Result {
     };
     let importer = import::Importer::new(db.clone(), paths.import_temp.clone());
     let images = images::Images::new(paths.image_cache.clone());
+    // Downloads use the playlist's user agent, read on their own connection.
+    let ua_db = db::open_connection(&paths.database).ok();
+    let downloads = downloads::Downloads::new(paths.downloads.clone(), paths.downloads_index.clone(), move |sid| {
+        ua_db.as_ref().and_then(|c| repo::source(c, sid).ok().flatten()).and_then(|s| s.user_agent).filter(|u| !u.is_empty())
+    });
+    let lock = lock::Lock::load();
 
     let options = eframe::NativeOptions {
         renderer: eframe::Renderer::Glow,
@@ -54,7 +62,7 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "CAT",
         options,
-        Box::new(move |cc| Ok(Box::new(ui::app::App::new(cc, db, importer, images, settings)))),
+        Box::new(move |cc| Ok(Box::new(ui::app::App::new(cc, db, importer, images, settings, downloads, lock)))),
     )
 }
 

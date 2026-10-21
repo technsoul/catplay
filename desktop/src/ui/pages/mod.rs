@@ -1,8 +1,10 @@
 //! The app's pages and the state each keeps between frames.
 
+pub mod downloads;
 pub mod guide;
 pub mod home;
 pub mod live;
+pub mod lock;
 pub mod search;
 pub mod settings;
 pub mod sources;
@@ -21,6 +23,9 @@ pub struct Pages {
     pub series: vod::State,
     pub search: search::State,
     pub sources: sources::State,
+    pub lock: lock::State,
+    pub settings: settings::State,
+    pub downloads: downloads::State,
 }
 
 impl Pages {

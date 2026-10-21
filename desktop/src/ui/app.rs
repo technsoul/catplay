@@ -6,6 +6,8 @@ use super::pages;
 use super::theme::{self, *};
 use super::widgets::*;
 use crate::db::{Db, Group};
+use crate::downloads::Downloads;
+use crate::lock::Lock;
 use crate::images::Images;
 use crate::import::{Importer, Scope};
 use crate::model::{ItemKind, Source};
@@ -28,11 +30,12 @@ pub enum Section {
     Series,
     Search,
     Playlists,
+    Downloads,
     Settings,
 }
 
 impl Section {
-    const NAV: [(Section, &'static str, &'static str); 8] = [
+    const NAV: [(Section, &'static str, &'static str); 9] = [
         (Section::Home, "🏠", "Home"),
         (Section::Live, "📺", "Live TV"),
         (Section::Guide, "☰", "TV Guide"),
@@ -40,6 +43,7 @@ impl Section {
         (Section::Series, "🎞", "Series"),
         (Section::Search, "🔍", "Search"),
         (Section::Playlists, "📂", "Playlists"),
+        (Section::Downloads, "📥", "Downloads"),
         (Section::Settings, "⚙", "Settings"),
     ];
 }
@@ -49,6 +53,8 @@ pub struct App {
     pub importer: Importer,
     pub player: Player,
     pub images: Images,
+    pub downloads: Downloads,
+    pub lock: Lock,
     pub settings: Settings,
     saved_settings: Settings,
     settings_changed_at: Option<Instant>,
@@ -71,13 +77,23 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(cc: &eframe::CreationContext<'_>, db: Db, importer: Importer, images: Images, settings: Settings) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        db: Db,
+        importer: Importer,
+        images: Images,
+        settings: Settings,
+        downloads: Downloads,
+        lock: Lock,
+    ) -> Self {
         super::set_context(&cc.egui_ctx);
         theme::install(&cc.egui_ctx);
         let display = cc.display_handle().ok().map(|h| h.as_raw());
-        let player = Player::new(db.clone(), &settings);
+        let player = Player::new(db.clone(), &settings, downloads.clone());
         Self {
             player,
+            downloads,
+            lock,
             db,
             importer,
             images,
@@ -361,6 +377,10 @@ impl App {
                 i.modifiers.command && i.key_pressed(Key::F),
             )
         });
+        if ctx.input(|i| i.modifiers.command && i.key_pressed(Key::L)) {
+            self.lock.lock_now();
+            return;
+        }
         if ctrl_f {
             self.go(Section::Search);
             self.pages.search.focus = true;
@@ -423,6 +443,13 @@ impl App {
                     ui.add_space(6.0);
                     ui.label(egui::RichText::new("CAT").font(bold_font(26.0)).color(TEXT));
                     ui.label(egui::RichText::new("●").font(font(12.0)).color(ACCENT));
+                    if self.lock.enabled() {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("🔒 Lock").on_hover_text("Lock now (Ctrl+L)").clicked() {
+                                self.lock.lock_now();
+                            }
+                        });
+                    }
                 });
                 ui.add_space(14.0);
                 self.source_picker(ui);
@@ -432,6 +459,14 @@ impl App {
                     let p = ui.painter();
                     p.text(rect.left_center() + vec2(16.0, 0.0), Align2::LEFT_CENTER, icon, font(16.0), if self.section == s { ACCENT_BRIGHT } else { TEXT_SOFT });
                     p.text(rect.left_center() + vec2(46.0, 0.0), Align2::LEFT_CENTER, label, font(15.0), TEXT);
+                    if s == Section::Downloads {
+                        let n = self.downloads.active_count();
+                        if n > 0 {
+                            let c = rect.right_center() - vec2(20.0, 0.0);
+                            p.circle_filled(c, 10.0, ACCENT);
+                            p.text(c, Align2::CENTER_CENTER, n.to_string(), bold_font(11.0), TEXT);
+                        }
+                    }
                     if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                         self.go(s);
                     }
@@ -613,11 +648,23 @@ impl eframe::App for App {
             self.ensure_video(frame);
         }
         self.player.tick();
+        if std::mem::take(&mut self.player.finished) {
+            // Back to where the movie was started from.
+            self.full_player = false;
+        }
 
         let v = self.version(Group::Sources);
         let db = self.db.clone();
         if let Some(list) = self.sources.get(&v, || db.read(repo::sources)) {
             self.sources_list = list.clone();
+        }
+        if self.lock.locked {
+            // Nothing else is drawn (or started) behind the lock screen.
+            if self.player.playable.is_some() && !self.player.paused() {
+                self.player.toggle_pause();
+            }
+            egui::CentralPanel::no_frame().frame(egui::Frame::new().fill(BG)).show(ui, |ui| pages::lock::show(self, ui));
+            return;
         }
         self.startup_tasks();
         self.shortcuts(&ctx);
@@ -640,6 +687,7 @@ impl eframe::App for App {
                     Section::Series => pages::vod::show(self, ui, ItemKind::Series),
                     Section::Search => pages::search::show(self, ui),
                     Section::Playlists => pages::sources::show(self, ui),
+                    Section::Downloads => pages::downloads::show(self, ui),
                     Section::Settings => pages::settings::show(self, ui),
                 });
         }

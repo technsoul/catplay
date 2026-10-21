@@ -13,7 +13,8 @@ an earlier Flutter desktop install.
 - **Live TV:** categories, channel list with now/next, preview player, channel zapping, auto-reconnect
 - **TV guide:** full-day timeline grid, day picker, programme details, catch-up (Xtream `tv_archive`)
 - **Movies & series:** poster grids, sorting, details/plot, seasons & episodes, resume where you left off
-- **Downloads:** save movies and episodes (or a whole season) to watch offline, with pause/resume (Android; desktop next)
+- **Downloads:** save movies and episodes (or a whole season) to watch offline, with pause/resume
+- **App lock:** optional PIN asked at start-up (salted hash in the OS credential store)
 - **Search:** instant full-text search across all playlists (SQLite FTS5, prefix matching)
 - **Favorites, continue watching, recent channels**, multiple playlists
 - **Playback:** libmpv via `media_kit` — HEVC, AC3/E-AC3, MPEG-TS, HLS, hardware decoding, audio/subtitle tracks
